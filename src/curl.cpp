@@ -18,12 +18,12 @@ size_t write_cb_default(void* contents, size_t size, size_t nmemb, void* userp) 
 
 size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp) {
     auto as_streaming_resp = (StreamingResponse*)userp;
-    auto content = std::string((char*)contents);
+    auto content = std::string((char*)contents, size * nmemb);
     if (!as_streaming_resp->got_ttft) {
         auto got_token_time = std::chrono::high_resolution_clock::now();
         as_streaming_resp->latencies.ttft = got_token_time - as_streaming_resp->start;
     }
-    push_chunks(as_streaming_resp->ring, std::move(content));
+    push_chunks(as_streaming_resp, std::move(content));
     return size * nmemb;
 }
 
@@ -57,10 +57,12 @@ std::thread::id CURLHandler::post_stream(RequestParameters& req) {
     resp->start = std::chrono::high_resolution_clock::now();
     resp->got_ttft = false;
 
+    // TODO: Processing can inflate the "true" benchmarking numbers. Figure out how to resolve this
+    //       either by taking more measurements that can disclude the processing time, or something
+    //       else
     std::thread t(
         [post_data, resp, this] {
             CURL* ephemeral = curl_easy_init();
-            curl_easy_setopt(ephemeral, CURLOPT_VERBOSE, 1L);
             curl_easy_setopt(ephemeral, CURLOPT_URL, this->uri.c_str());
             curl_easy_setopt(ephemeral, CURLOPT_HTTPHEADER, headers);
             curl_easy_setopt(ephemeral, CURLOPT_POST, 1L);
@@ -74,10 +76,8 @@ std::thread::id CURLHandler::post_stream(RequestParameters& req) {
                 fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
                 exit(1);
             }
-            auto finish_time = std::chrono::high_resolution_clock::now();
             resp->ring.producer_finished = true;
             resp->done = true;
-            resp->latencies.end_to_end_latency = finish_time - resp->start;
 
             curl_easy_cleanup(ephemeral);
     }
@@ -146,7 +146,7 @@ std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
     return std::tuple<int, int>(start, end);
 }
 
-void push_chunks(SPMCRingBuffer& ring, std::string content) {
+void push_chunks(StreamingResponse* streamed, std::string content) {
     bool done = false;
     int offset = 0;
     std::string done_token = "[DONE]";
@@ -162,9 +162,11 @@ void push_chunks(SPMCRingBuffer& ring, std::string content) {
         if (chunk.back() != '}') {
             throw std::runtime_error("chunking error");
         }
+        // TODO: This is brittle to some weird case where "[DONE]" is included in the response text
         if (!str_contains(chunk, done_token)) {
-            ring.push(std::move(chunk));
+            streamed->ring.push(std::move(chunk));
         } else {
+            streamed->latencies.end_to_end_latency = std::chrono::high_resolution_clock::now() - streamed->start;
             done = true;
         }
     }

@@ -71,6 +71,8 @@ struct BenchmarkContext {
         auto request_worker_closure = [&job_id, this] {
             while (true) {
                 auto idx = job_id.fetch_add(1, std::memory_order_acquire);
+                // Should be condition if (idx >= this->benchmark.size()), limiting this
+                // so I don't run out of credits lol
                 //if (idx >= this->benchmark.size()) {
                 if (idx >= 5) {
                     break;

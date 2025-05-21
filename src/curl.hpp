@@ -44,4 +44,4 @@ json parse_to_json(std::string json_str);
 
 bool str_contains(const std::string& str, const std::string& to_test);
 
-void push_chunks(SPMCRingBuffer& ring, std::string content);
+void push_chunks(StreamingResponse* streamed, std::string content);
