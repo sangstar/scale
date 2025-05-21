@@ -134,10 +134,21 @@ struct BenchmarkContext {
             while (true) {
                 auto val = this->shared_client->fetch(id);
                 if (val.state == SUCCESS) {
+                    bool fine_to_add = true;
                     CompletionResults results(val.content.value());
+                    // For finish_reason = length, an empty response
+                    // is thrown back at the end indicating it reached
+                    // the finish_reason. Don't include these results.
+                    for (auto& choice : results.choices) {
+                        if (choice.text == "") {
+                            fine_to_add = false;
+                        }
+                    }
                     // TODO: Make this atomic
-                    std::lock_guard<std::mutex> lock(res_mutex);
-                    res->emplace_back(std::move(results));
+                    if (fine_to_add) {
+                        std::lock_guard<std::mutex> lock(res_mutex);
+                        res->emplace_back(std::move(results));
+                    }
                 } else if (val.state == EMPTY && this->shared_client->write_to_buffer_finished(id)) {
                     break;
                 }

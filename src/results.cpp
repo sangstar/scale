@@ -13,6 +13,7 @@ std::vector<json> Results::to_json() {
         j["id"] = compl_result.id;
         j["model"] = compl_result.model;
         j["object"] = compl_result.object;
+        j["prompt"] = params.prompt;
         int choice_count = 0;
         for (auto& choice : compl_result.choices) {
             std::string choice_id = "choice_" + std::to_string(choice_count);
