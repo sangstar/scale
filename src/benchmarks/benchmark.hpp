@@ -68,16 +68,17 @@ struct BenchmarkContext {
 
 
         auto closure = [this, id, res, &res_mutex] {
-            RingState state = SUCCESS;
-            std::atomic<bool> done = false;
-            while (!this->shared_client->write_to_buffer_finished(id)) {
+            while (true) {
                 auto val = this->shared_client->fetch(id);
                 if (val.state == SUCCESS) {
                     CompletionResults results(val.content.value());
                     // TODO: Make this atomic
                     std::lock_guard<std::mutex> lock(res_mutex);
                     res->emplace_back(std::move(results));
-                } else {
+                } else if (val.state == EMPTY && this->shared_client->write_to_buffer_finished(id)) {
+                    break;
+                }
+                else {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
             }
