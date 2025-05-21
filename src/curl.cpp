@@ -58,7 +58,7 @@ std::thread::id CURLHandler::post_stream(RequestParameters& req) {
     resp->got_ttft = false;
 
     // TODO: Processing can inflate the "true" benchmarking numbers. Figure out how to resolve this
-    //       either by taking more measurements that can disclude the processing time, or something
+    //       either by taking more measurements that can exclude the processing time, or something
     //       else
     std::thread t(
         [post_data, resp, this] {
