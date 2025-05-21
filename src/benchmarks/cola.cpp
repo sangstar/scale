@@ -16,3 +16,8 @@ RequestParameters ColaBenchmark::request_from_dataset_row(int idx) const {
     req.prompt = std::format(pre_formatted_text, sentence);
     return req;
 }
+
+size_t ColaBenchmark::size() {
+    auto rows = dataset["rows"];
+    return rows.size();
+}

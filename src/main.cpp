@@ -13,16 +13,6 @@ int main() {
 
     auto ctx = BenchmarkContext<ColaBenchmark>(benchmark, "https://api.openai.com/v1/completions");
 
-    // TODO: Make this concurrent and atomic, have this wrap some struct that includes the params,
-    //       and fetch all the important metrics at the exact time necessary, such as TTFT, end-to-end
-    //       latency, etc. Don't let the threads make this worse. Make these exact and don't let any
-    //       workers doing processing to detract from the numbers
-    //
-    // TODO: Afterwards, then implement scoring
-    for (int i = 0; i < 5; i++) {
-        auto params = benchmark.request_from_dataset_row(0);
-        ctx.send_and_add_to_buffer(params);
-    }
-
+    ctx.perform_benchmark("output.jsonl");
     return 1;
 }

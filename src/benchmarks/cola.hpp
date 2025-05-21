@@ -11,6 +11,8 @@ public:
     ~ColaBenchmark() = default;
     RequestParameters request_from_dataset_row(int idx) const;
     json dataset;
+    size_t size();
+
     constexpr static std::string_view pre_formatted_text =
         "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
 };

@@ -11,4 +11,5 @@ struct Results {
     RequestParameters params;
     std::vector<CompletionResults> completion_results;
     LatencyMetrics latencies;
+    std::vector<json> to_json();
 };
