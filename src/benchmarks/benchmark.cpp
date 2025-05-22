@@ -99,6 +99,12 @@ json RequestParameters::to_json() {
     return j;
 }
 
+// TODO: Will eventually want to consider logprobs for answers
+//       to calculate scores for probabilities for stuff like F1
+//       down the line rather than only getting right/wrong tallied
+//       For instance, if answer to a question was given "Yes", but "No"
+//       was in the top logprobs, it would be useful to get the probs
+//       for both down the line
 bool guessed_correctly(LabelStates state, const Results& res) {
     switch (state) {
         case TRUE:

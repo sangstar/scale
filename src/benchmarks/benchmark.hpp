@@ -110,19 +110,7 @@ struct BenchmarkContext {
                 if (idx >= 5) {
                     break;
                 }
-                // TODO: I have the benchmark class in scope and the full informative response struct
-                //       here. This would be a great place to actually grade the response here by comparing
-                //       the "golden label" for this row. Should be an easy way to score.
-                //       something like:
-                //       ```
-                //       auto params_and_golden_label = this->benchmark.request_and_label_from_dataset_row(idx);
-                //       auto label = std::get<1>(params_and_golden_label)
-                //       auto params = std::get<0>(params_and_golden_label)
-                //       send_and_add_to_buffer(params, label);
-                //       ```
-                //       Where I can modify send_and_add_to_buffer() to include the `label` part and
-                //       can modify the `Results` struct to include the label, and then the writer thread
-                //       can access if the answer was correct by comparing the text generated and label
+
                 auto params = this->benchmark.request_from_dataset_row(idx);
                 send_and_add_to_buffer(params);
             }

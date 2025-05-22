@@ -43,7 +43,7 @@ RingState MPSCRingBuffer::push(Results content) {
     }
 
     // Check if the slot at idx has been filled yet. If it hasn't,
-    // atomically claim and right to it
+    // atomically claim and write to it
     if (head.compare_exchange_strong(polled_head, polled_head + 1)) {
         auto& slot = data[idx];
         slot.content = content;
