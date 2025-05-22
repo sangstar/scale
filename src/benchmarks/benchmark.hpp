@@ -173,9 +173,16 @@ struct BenchmarkContext {
                 if (val.state == SUCCESS) {
                     bool fine_to_add = true;
                     CompletionResults results(val.content.value());
+
                     // For finish_reason = length, an empty response
                     // is thrown back at the end indicating it reached
                     // the finish_reason. Don't include these results.
+                    // TODO: The logic here is likely flimsy and it assumes
+                    //       choices has only one element (which is all I'm
+                    //       used to seeing and assuming). What if there are
+                    //       multiple Choices and one has text = "" and one doesn't?
+                    //       this would disqualify all
+
                     for (auto& choice : results.choices) {
                         if (choice.text == "") {
                             fine_to_add = false;
