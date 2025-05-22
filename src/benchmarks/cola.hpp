@@ -13,6 +13,12 @@ public:
     json dataset;
     size_t size();
 
+    static constexpr std::pair<std::string_view, LabelStates> label_map[] = {
+        {"-1", NO_LABEL},
+        {"0", FALSE},
+        {"1", TRUE},
+    };
+
     constexpr static std::string_view pre_formatted_text =
         "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
 };

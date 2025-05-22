@@ -4,7 +4,7 @@
 
 
 int main() {
-    const char* uri = "https://datasets-server.huggingface.co/rows?dataset=nyu-mll%2Fglue&config=cola&split=test&offset=0&length=100";
+    const char* uri = "https://datasets-server.huggingface.co/rows?dataset=nyu-mll%2Fglue&config=cola&split=train&offset=0&length=100";
     auto resp = CURLHandler::get(uri);
     auto cola_json =parse_to_json(std::move(resp));
     ColaBenchmark benchmark(std::move(cola_json));

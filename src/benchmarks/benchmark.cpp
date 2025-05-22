@@ -5,6 +5,53 @@
 #include "benchmark.hpp"
 #include "../curl.hpp"
 
+// These trimming functions are from:
+// https://stackoverflow.com/a/25385766/8825740
+const char* ws = " \t\n\r\f\v";
+
+inline std::string& rtrim(std::string& s, const char* t = ws)
+{
+    s.erase(s.find_last_not_of(t) + 1);
+    return s;
+}
+
+inline std::string& ltrim(std::string& s, const char* t = ws)
+{
+    s.erase(0, s.find_first_not_of(t));
+    return s;
+}
+
+inline std::string& trim(std::string& s, const char* t = ws)
+{
+    return ltrim(rtrim(s, t), t);
+}
+
+inline void lower(std::string& to_lower) {
+    for (auto &c: to_lower) {
+        c = std::tolower(c);
+    }
+}
+
+inline std::string parse_guessed_string(std::string& guess) {
+    auto trimmed = trim(guess);
+    lower(trimmed);
+    return std::move(trimmed);
+}
+
+bool guess_grade(const Label label, const Results& res) {
+    auto crucial_result = res.completion_results[0];
+    // Only allow the first choice
+    auto crucial_choice = crucial_result.choices[0];
+    auto guess = crucial_choice.text;
+    auto parsed = parse_guessed_string(guess);
+    for (const auto& viable : label.allowed_strings) {
+        if (viable == parsed) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 Logprobs::Logprobs(json logprobs_json) {
     logprobs_json.at("tokens").get_to(tokens);
@@ -52,3 +99,13 @@ json RequestParameters::to_json() {
     return j;
 }
 
+bool guessed_correctly(LabelStates state, const Results& res) {
+    switch (state) {
+        case TRUE:
+            return guess_grade(YesLabel, res);
+        case FALSE:
+            return guess_grade(NoLabel, res);
+        default:
+            return false;
+    }
+}

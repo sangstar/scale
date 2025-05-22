@@ -23,7 +23,9 @@ static size_t write_cb_default(void* contents, size_t size, size_t nmemb, void* 
 static size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp);
 
 
-
+// TODO: libcurl with libcurl_easy_perform might hit a ceiling at some point
+//       with a large number of concurrent requests, although GPU VRAM will probably
+//       bottleneck first
 class CURLHandler {
 public:
     std::string uri;

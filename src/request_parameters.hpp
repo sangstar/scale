@@ -17,6 +17,7 @@ struct RequestParameters {
     int max_tokens = 1;
     int top_k = 1;
     bool stream = true;
+    std::string golden_label;
     json to_json();
 };
 

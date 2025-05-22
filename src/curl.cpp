@@ -118,6 +118,7 @@ bool str_contains(const std::string& str, const std::string& to_test) {
 }
 
 // TODO: Refactor this to use str_contains
+//       this sometimes breaks
 std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
     int start = 0;
     int end = 0;
@@ -143,6 +144,9 @@ std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
             end = i + 1;
         }
     }
+    if (start != 0 && end != 0 && start == end) {
+        throw std::runtime_error("chunk failed to process");
+    }
     return std::tuple<int, int>(start, end);
 }
 
@@ -154,21 +158,22 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
         auto t = get_chunk_indices(offset, content);
         auto start = std::get<0>(t);
         offset = std::get<1>(t);
-        if (offset == 0) {
+        auto chunk = content.substr(start, offset - start);
+
+        // TODO: This is brittle to some weird case where "[DONE]" is included in the response text
+        // The stopping condition here is when there's nothing left to read in to a chunk or there's a chunk with
+        // the [DONE] token
+        if (str_contains(chunk, done_token) || start == offset) {
+            streamed->latencies.end_to_end_latency = std::chrono::high_resolution_clock::now() - streamed->start;
             done = true;
             continue;
         }
-        auto chunk = content.substr(start, offset - start);
+
+        // This is illegal if the above condition is false
         if (chunk.back() != '}') {
             throw std::runtime_error("chunking error");
         }
-        // TODO: This is brittle to some weird case where "[DONE]" is included in the response text
-        if (!str_contains(chunk, done_token)) {
-            streamed->ring.push(std::move(chunk));
-        } else {
-            streamed->latencies.end_to_end_latency = std::chrono::high_resolution_clock::now() - streamed->start;
-            done = true;
-        }
+        streamed->ring.push(std::move(chunk));
     }
     return;
 }

@@ -13,6 +13,8 @@ RequestParameters ColaBenchmark::request_from_dataset_row(int idx) const {
         throw std::runtime_error("Improperly indexed dataset row.");
     }
     const auto& sentence = row_entry["sentence"].dump();
+    const auto& label = row_entry["label"].dump();
+    req.golden_label = label;
     req.prompt = std::format(pre_formatted_text, sentence);
     return req;
 }
