@@ -165,7 +165,8 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
         // the [DONE] token
         if (str_contains(chunk, done_token) || start == offset) {
             // TODO: Need to seriously consider some timer abstraction to ensure
-            //       processing stuff isn't inflating the actual latency
+            //       processing stuff isn't significantly inflating the actual latency.
+            //       At very least must heavily profile
             streamed->latencies.end_to_end_latency = std::chrono::high_resolution_clock::now() - streamed->start;
             done = true;
             continue;
