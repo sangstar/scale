@@ -27,6 +27,10 @@ struct Choice {
     Choice(json choice_json);
 };
 
+// TODO: I've allowed a vector of Choices here,
+//       even though I've only seen responses with just
+//       1 Choice per streamed response, and the workflow
+//       here reflects that assumption
 struct CompletionResults {
     CompletionResults() = default;
     ~CompletionResults() = default;

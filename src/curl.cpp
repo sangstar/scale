@@ -164,6 +164,8 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
         // The stopping condition here is when there's nothing left to read in to a chunk or there's a chunk with
         // the [DONE] token
         if (str_contains(chunk, done_token) || start == offset) {
+            // TODO: Need to seriously consider some timer abstraction to ensure
+            //       processing stuff isn't inflating the actual latency
             streamed->latencies.end_to_end_latency = std::chrono::high_resolution_clock::now() - streamed->start;
             done = true;
             continue;
