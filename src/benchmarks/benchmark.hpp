@@ -13,9 +13,10 @@
 #include <atomic>
 #include <fstream>
 #include <cctype>
+#include "../results.hpp"
 
-constexpr int NumWorkersPerRequest = 2;
-constexpr int NumWorkers = 2;
+constexpr int NumWorkersPerRequest = 8;
+constexpr int NumConcurrentRequests = 40;
 
 using json = nlohmann::json;
 
@@ -52,6 +53,7 @@ LabelStates get_label_state(const B& bench, const RequestParameters& req) {
 
 bool guessed_correctly(LabelStates state, const Results& res);
 
+void report_results(FinalMetrics& metrics);
 
 template <Benchmark B>
 std::vector<json> get_output_json(const Results& res, const B& bench) {
@@ -59,7 +61,7 @@ std::vector<json> get_output_json(const Results& res, const B& bench) {
     auto state = get_label_state(bench, res.params);
     auto correct = guessed_correctly(state, res);
     for (const auto& compl_result: res.completion_results) {
-        json j;
+        json j = json::object();
         j["e2e_latency"] = res.latencies.end_to_end_latency.count();
         j["ttft"] = res.latencies.ttft.count();
         j["id"] = compl_result.id;
@@ -86,28 +88,36 @@ template <Benchmark Bench>
 struct BenchmarkContext {
     Bench benchmark;
     bool finished;
-    std::shared_ptr<MPSCRingBuffer> results_buffer;
+    std::shared_ptr<MPSCRingBuffer<Results>> results_buffer;
     std::shared_ptr<CURLHandler> shared_client;
     BenchmarkContext(Bench bench, std::shared_ptr<CURLHandler> shared_client) : benchmark(bench), finished(false),
         shared_client(shared_client) {
-        results_buffer = std::make_shared<MPSCRingBuffer>();
+        results_buffer = std::make_shared<MPSCRingBuffer<Results>>();
     }
 
-    void perform_benchmark(const char* filename_jsonl) {
-        auto writer_closure = [=] {
-            consume_buffer_and_write_to_json(filename_jsonl);
+    void perform_benchmark(const char* filename_jsonl, LoggingContext* maybe_logger) {
+
+
+        FinalMetrics metrics;
+        metrics.output_jsonl = filename_jsonl;
+        metrics.requests_processed = 0;
+        if (maybe_logger) {
+            metrics.logger = maybe_logger;
+        }
+        metrics.benchmark_start = std::chrono::high_resolution_clock::now();
+
+
+        auto writer_closure = [this, &metrics] {
+            consume_buffer_and_write_to_json(metrics);
         };
         std::thread writer(writer_closure);
-
         std::atomic<int> job_id = 0;
 
         auto request_worker_closure = [&job_id, this] {
             while (true) {
                 auto idx = job_id.fetch_add(1, std::memory_order_acquire);
-                // Should be condition if (idx >= this->benchmark.size()), limiting this
-                // so I don't run out of credits lol
-                //if (idx >= this->benchmark.size()) {
-                if (idx >= 5) {
+
+                if (idx >= this->benchmark.size()) {
                     break;
                 }
 
@@ -118,11 +128,11 @@ struct BenchmarkContext {
         };
 
         std::vector<std::thread> workers;
-        for (int i = 0; i < NumWorkers; ++i) {
+        for (int i = 0; i < NumConcurrentRequests; ++i) {
             std::thread t(request_worker_closure);
             workers.emplace_back(std::move(t));
         }
-        for (int i = 0; i < NumWorkers; ++i) {
+        for (int i = 0; i < NumConcurrentRequests; ++i) {
             workers[i].join();
         }
         finished = true;
@@ -130,8 +140,8 @@ struct BenchmarkContext {
         writer.join();
     }
 
-    void consume_buffer_and_write_to_json(const char* filename_jsonl) const {
-        std::ofstream outfile(filename_jsonl);
+    void consume_buffer_and_write_to_json(FinalMetrics& metrics) const {
+        std::ofstream outfile(metrics.output_jsonl);
 
         if (!outfile.is_open()) {
             throw std::runtime_error("failed to open output file");
@@ -143,22 +153,27 @@ struct BenchmarkContext {
         while (true) {
             RingResult<Results> result = this->results_buffer->fetch();
             if (result.state == SUCCESS) {
+                metrics.requests_processed++;
                 auto content = result.content.value();
                 auto jsons = get_output_json<Bench>(content, this->benchmark);
                 for (auto& jsonl : jsons) {
-                    outfile << jsonl.dump() << '\n';
+                    auto jsonl_str = jsonl.dump();
+                    metrics.logger->write(std::format("Req {}:, {}", metrics.requests_processed, jsonl.dump()).c_str());
+                    outfile << jsonl_str << '\n';
                 }
             }
             if (result.state == EMPTY && this->finished) {
                 break;
             }
         }
+        metrics.benchmark_end = std::chrono::high_resolution_clock::now();
+        report_results(metrics);
         outfile.close();
     }
 
     BenchmarkContext(Bench bench, const char* uri) : benchmark(bench), finished(false) {
         shared_client = std::make_shared<CURLHandler>(uri, std::getenv("OPENAI_API_KEY"));
-        results_buffer = std::make_shared<MPSCRingBuffer>();
+        results_buffer = std::make_shared<MPSCRingBuffer<Results>>();
     }
 
     void send_and_add_to_buffer(RequestParameters& req) {
@@ -167,8 +182,11 @@ struct BenchmarkContext {
         std::mutex res_mutex;
 
 
-        auto closure = [this, id, res, &res_mutex] {
+        int max_retries = 2;
+        auto closure = [this, id, res, &res_mutex, max_retries] {
+            int retries = 0;
             while (true) {
+                bool producer_finished = this->shared_client->write_to_buffer_finished(id);
                 auto val = this->shared_client->fetch(id);
                 if (val.state == SUCCESS) {
                     bool fine_to_add = true;
@@ -193,12 +211,13 @@ struct BenchmarkContext {
                         std::lock_guard<std::mutex> lock(res_mutex);
                         res->emplace_back(std::move(results));
                     }
-                } else if (val.state == EMPTY && this->shared_client->write_to_buffer_finished(id)) {
-                    break;
+                } else if (val.state == EMPTY && producer_finished) {
+                    if (max_retries == retries) {
+                        break;
+                    }
+                    retries++;
                 }
-                else {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         };
 
@@ -212,16 +231,21 @@ struct BenchmarkContext {
             workers[i].join();
         }
 
-        Results result;
+        if (res->size() > 0) {
+            Results result;
 
-        // res doesn't need to be shared anymore, so dereference off
-        // the shared_ptr safeguard and move the result for the caller
-        // to own it.
-        result.completion_results = std::move(*res);
-        result.latencies = latencies;
-        result.params = req;
+            // res doesn't need to be shared anymore, so dereference off
+            // the shared_ptr safeguard and move the result for the caller
+            // to own it.
+            result.completion_results = std::move(*res);
+            result.latencies = latencies;
+            result.params = req;
 
-        results_buffer->push(result);
+            results_buffer->push(result);
+        }
+        else {
+            Logger.write("Worker found no jobs from request buffer.");
+        }
     }
 };
 

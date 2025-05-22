@@ -34,35 +34,3 @@ RingResult<std::string> SPMCRingBuffer::fetch() {
 
     return RingResult<std::string>{NOT_READY,std::nullopt};
 }
-
-RingState MPSCRingBuffer::push(Results content) {
-    auto polled_head = head.load(std::memory_order_acquire);
-    auto idx = polled_head % data.size();
-    if ((polled_head + 1) % data.size() == tail) {
-        return FULL;
-    }
-
-    // Check if the slot at idx has been filled yet. If it hasn't,
-    // atomically claim and write to it
-    if (head.compare_exchange_strong(polled_head, polled_head + 1)) {
-        auto& slot = data[idx];
-        slot.content = content;
-
-        // slot.ready is understood as "filled"
-        slot.ready.store(true, std::memory_order_release);
-        return SUCCESS;
-    }
-    return NOT_READY;
-}
-
-RingResult<Results> MPSCRingBuffer::fetch() {
-    auto idx = tail % data.size();
-    if (tail == head.load(std::memory_order_acquire)) {
-        return RingResult<Results>{EMPTY, std::nullopt};
-    }
-    if (data[idx].ready.load(std::memory_order_acquire)) {
-        tail++;
-        return RingResult<Results>{SUCCESS, data[idx].content};
-    }
-    return RingResult<Results>{NOT_READY, std::nullopt};
-}

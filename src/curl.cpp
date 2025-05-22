@@ -7,6 +7,8 @@
 #include <thread>
 #include <fstream>
 #include <random>
+#include "logger.hpp"
+
 
 constexpr size_t data_token_len = std::string("data:").size();
 
@@ -90,6 +92,9 @@ std::thread::id CURLHandler::post_stream(RequestParameters& req) {
 
 LatencyMetrics CURLHandler::await(std::thread::id req_id) {
     auto resp = buf[req_id].get();
+    if (!resp) {
+        throw std::runtime_error("response stream is null");
+    }
     if (!resp->done) {
         resp->t.join();
     }
@@ -172,6 +177,7 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
             continue;
         }
 
+        Logger.write(std::format("Got chunk: {}", chunk.data()).c_str());
         // This is illegal if the above condition is false
         if (chunk.back() != '}') {
             throw std::runtime_error("chunking error");

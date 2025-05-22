@@ -23,7 +23,9 @@ add_executable(scale src/main.cpp
         src/latency_metrics.cpp
         src/latency_metrics.hpp
         src/benchmarks/labels.cpp
-        src/benchmarks/labels.hpp)
+        src/benchmarks/labels.hpp
+        src/logger.cpp
+        src/logger.hpp)
 
 find_package(CURL REQUIRED)
 target_link_libraries(scale PRIVATE CURL::libcurl)
