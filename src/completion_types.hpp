@@ -10,6 +10,17 @@
 using json = nlohmann::json;
 using TopLogprobs = std::vector<std::unordered_map<std::string, float>>;
 
+struct logprob_entry {
+    std::string text;
+    std::optional<float> logprob = std::nullopt;
+    std::string dump() {
+        if (logprob.has_value()) {
+            return std::format("{}",logprob.value());
+        }
+        return std::format("N/A", text);
+    }
+};
+
 struct Logprobs {
     Logprobs() = default;
     Logprobs(json logprobs_json);

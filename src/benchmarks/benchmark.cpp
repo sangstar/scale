@@ -38,7 +38,7 @@ inline std::string parse_guessed_string(std::string& guess) {
     return std::move(trimmed);
 }
 
-bool guess_grade(const Label label, const Results& res) {
+bool guess_grade(const Label label, const RequestResults& res) {
     auto crucial_result = res.completion_results[0];
     // Only allow the first choice
     auto crucial_choice = crucial_result.choices[0];
@@ -105,11 +105,11 @@ json RequestParameters::to_json() {
 //       For instance, if answer to a question was given "Yes", but "No"
 //       was in the top logprobs, it would be useful to get the probs
 //       for both down the line
-bool guessed_correctly(LabelStates state, const Results& res) {
+bool guessed_correctly(LabelStates state, const RequestResults& res) {
     switch (state) {
-        case TRUE:
+        case YES:
             return guess_grade(YesLabel, res);
-        case FALSE:
+        case NO:
             return guess_grade(NoLabel, res);
         default:
             return false;
@@ -131,5 +131,58 @@ void report_results(FinalMetrics& metrics) {
 
     auto benchmark_duration = metrics.benchmark_end - metrics.benchmark_start;
     auto seconds = duration_cast<std::chrono::duration<double>>(benchmark_duration).count();
-    polymorphic_writer(std::format("{} requests received in {}s.", metrics.requests_processed, seconds));
+    polymorphic_writer(std::format("{} requests processed in {}s.", metrics.requests_processed, seconds));
+}
+
+inline std::optional<float> get_logprob(std::string key, float value, const Label& label) {
+    auto parsed_token = parse_guessed_string(key);
+    for (const auto& allowed_str : label.allowed_strings) {
+        if (parsed_token == allowed_str) {
+            return value;
+        }
+    }
+    return std::nullopt;
+}
+
+
+// TODO: This `crucial_result`, `crucial_choice` stuff needs a refactor
+//       where the access of which result or choice to use is determined by some
+//       function to make this less rigid
+YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const RequestResults& res) {
+    YesNoLogprobPair pair;
+    auto logprobs = res.completion_results[0].choices[0].logprobs;
+    if (correct) {
+        auto correct_guess_logprob = res.completion_results[0].choices[0].logprobs.token_logprobs[0];
+        auto correct_guess_logprob_text = res.completion_results[0].choices[0].logprobs.tokens[0];
+        switch (state) {
+            case YES:
+                pair.yes = logprob_entry{.logprob = correct_guess_logprob, .text = correct_guess_logprob_text};
+                break;
+            case NO:
+                pair.no = logprob_entry{.logprob = correct_guess_logprob, .text = correct_guess_logprob_text};
+                break;
+            default:
+                break;
+        }
+    }
+    // TODO: Need to order the TopLogprobs in descending order, otherwise I risk saying the logprob for
+    //       "No" is based off a TopLogprob " NO" with logprob -15.242 when there was a "no" logprob with -2,
+    //       which would deflate the performance eval here.
+    for (const auto& top_logprob: logprobs.top_logprobs) {
+        for (const auto& [k,v] : top_logprob) {
+            std::string key = k;
+            if (!pair.yes.has_value()) {
+                auto maybe_yes_logprob = get_logprob(key, v, YesLabel);
+                if (maybe_yes_logprob.has_value()) {
+                    pair.yes = logprob_entry{key, maybe_yes_logprob.value()};
+                }
+            } else if (!pair.no.has_value()) {
+                auto maybe_no_logprob = get_logprob(key, v, NoLabel);
+                if (maybe_no_logprob.has_value()) {
+                    pair.no = logprob_entry{key, maybe_no_logprob.value()};
+                }
+            }
+        }
+    }
+    return std::move(pair);
 }

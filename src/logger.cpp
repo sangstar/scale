@@ -42,10 +42,12 @@ void AsyncLogger::write(const char* message) {
     cv.notify_one();
 }
 
-LoggingContext::LoggingContext(const std::string& filename) : logger(filename) {}
+LoggingContext::LoggingContext(const std::string& filename, LogLevel level) : logger(filename), level(level) {}
 
 void LoggingContext::write(const char* message) {
-    logger.write(message);
+    if (level == DEBUG) {
+        logger.write(message);
+    }
 };
 
 void AsyncLogger::display_loop() {

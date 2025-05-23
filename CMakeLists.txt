@@ -18,8 +18,8 @@ add_executable(scale src/main.cpp
         src/streaming_response.hpp
         src/request_parameters.cpp
         src/request_parameters.hpp
-        src/results.cpp
-        src/results.hpp
+        src/result_types.cpp
+        src/result_types.hpp
         src/latency_metrics.cpp
         src/latency_metrics.hpp
         src/benchmarks/labels.cpp

@@ -4,7 +4,7 @@
 #include "logger.hpp"
 
 const std::string filename = "stdout";
-LoggingContext Logger(filename);
+LoggingContext Logger(filename, NOTSET);
 
 int main() {
     const char* uri = "https://datasets-server.huggingface.co/rows?dataset=nyu-mll%2Fglue&config=cola&split=train&offset=0";

@@ -2,9 +2,9 @@
 // Created by Sanger Steel on 5/20/25.
 //
 
-#include "results.hpp"
+#include "result_types.hpp"
 
-std::vector<json> Results::to_json() {
+std::vector<json> RequestResults::to_json() {
     std::vector<json> json_vec;
     for (auto& compl_result : completion_results) {
         json j;

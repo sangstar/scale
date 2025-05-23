@@ -13,13 +13,18 @@
 #include <atomic>
 #include <fstream>
 #include <cctype>
-#include "../results.hpp"
+#include "../result_types.hpp"
 
-constexpr int NumWorkersPerRequest = 8;
-constexpr int NumConcurrentRequests = 40;
+constexpr int NumWorkersPerRequest = 4;
+constexpr int NumConcurrentRequests = 50;
 
 using json = nlohmann::json;
 
+struct YesNoLogprobPair {
+    std::optional<logprob_entry> yes = std::nullopt;
+    std::optional<logprob_entry> no = std::nullopt;
+
+};
 
 enum RowDatatypes {
     STRING,
@@ -51,15 +56,18 @@ LabelStates get_label_state(const B& bench, const RequestParameters& req) {
     return NO_LABEL;
 }
 
-bool guessed_correctly(LabelStates state, const Results& res);
+bool guessed_correctly(LabelStates state, const RequestResults& res);
 
 void report_results(FinalMetrics& metrics);
 
+YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const RequestResults& res);
+
 template <Benchmark B>
-std::vector<json> get_output_json(const Results& res, const B& bench) {
+std::vector<json> get_output_json(const RequestResults& res, const B& bench) {
     std::vector<json> json_vec;
     auto state = get_label_state(bench, res.params);
     auto correct = guessed_correctly(state, res);
+    auto logprobs_for_yes_and_no = get_yes_no_logprobs(state, correct, res);
     for (const auto& compl_result: res.completion_results) {
         json j = json::object();
         j["e2e_latency"] = res.latencies.end_to_end_latency.count();
@@ -69,30 +77,33 @@ std::vector<json> get_output_json(const Results& res, const B& bench) {
         j["object"] = compl_result.object;
         j["prompt"] = res.params.prompt;
         j["guessed_correctly"] = correct;
-        int choice_count = 0;
-        for (auto& choice : compl_result.choices) {
-            std::string choice_id = "choice_" + std::to_string(choice_count);
-            j[choice_id + "_finish_reason"] = choice.finish_reason;
-            j[choice_id + "_text"] = choice.text;
+        if (logprobs_for_yes_and_no.yes.has_value()) {
+            j["yes_logprob"] = logprobs_for_yes_and_no.yes.value().dump();
+        } else {
+            j["yes_logprob"] = "N/A";
         }
+        if (logprobs_for_yes_and_no.no.has_value()) {
+            j["no_logprob"] = logprobs_for_yes_and_no.no.value().dump();
+        } else {
+            j["no_logprob"] = "N/A";
+        }
+        auto choice = compl_result.choices[0];
+        j["finish_reason"] = choice.finish_reason;
+        j["text"] = choice.text;
         json_vec.emplace_back(j);
     }
     return std::move(json_vec);
 };
 
-
-
-
-
 template <Benchmark Bench>
 struct BenchmarkContext {
     Bench benchmark;
     bool finished;
-    std::shared_ptr<MPSCRingBuffer<Results>> results_buffer;
+    std::shared_ptr<MPSCRingBuffer<RequestResults>> results_buffer;
     std::shared_ptr<CURLHandler> shared_client;
     BenchmarkContext(Bench bench, std::shared_ptr<CURLHandler> shared_client) : benchmark(bench), finished(false),
         shared_client(shared_client) {
-        results_buffer = std::make_shared<MPSCRingBuffer<Results>>();
+        results_buffer = std::make_shared<MPSCRingBuffer<RequestResults>>();
     }
 
     void perform_benchmark(const char* filename_jsonl, LoggingContext* maybe_logger) {
@@ -151,14 +162,14 @@ struct BenchmarkContext {
         // that it finishes early due to an empty buffer before all producers
         // are finished, so we can probably get away with not signaling done
         while (true) {
-            RingResult<Results> result = this->results_buffer->fetch();
+            RingResult<RequestResults> result = this->results_buffer->fetch();
             if (result.state == SUCCESS) {
                 metrics.requests_processed++;
-                auto content = result.content.value();
+                const auto& content = result.content.value();
                 auto jsons = get_output_json<Bench>(content, this->benchmark);
                 for (auto& jsonl : jsons) {
                     auto jsonl_str = jsonl.dump();
-                    metrics.logger->write(std::format("Req {}:, {}", metrics.requests_processed, jsonl.dump()).c_str());
+                    metrics.logger->write(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()).c_str());
                     outfile << jsonl_str << '\n';
                 }
             }
@@ -173,7 +184,7 @@ struct BenchmarkContext {
 
     BenchmarkContext(Bench bench, const char* uri) : benchmark(bench), finished(false) {
         shared_client = std::make_shared<CURLHandler>(uri, std::getenv("OPENAI_API_KEY"));
-        results_buffer = std::make_shared<MPSCRingBuffer<Results>>();
+        results_buffer = std::make_shared<MPSCRingBuffer<RequestResults>>();
     }
 
     void send_and_add_to_buffer(RequestParameters& req) {
@@ -232,7 +243,7 @@ struct BenchmarkContext {
         }
 
         if (res->size() > 0) {
-            Results result;
+            RequestResults result;
 
             // res doesn't need to be shared anymore, so dereference off
             // the shared_ptr safeguard and move the result for the caller

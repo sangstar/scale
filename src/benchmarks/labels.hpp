@@ -7,8 +7,8 @@
 
 enum LabelStates {
     NO_LABEL,
-    TRUE,
-    FALSE,
+    YES,
+    NO,
 };
 
 using LabelStatesMapping = const std::pair<std::string_view, LabelStates>;
@@ -23,6 +23,6 @@ struct Label {
     state(state_) {};
 };
 
-constexpr Label YesLabel(TRUE, {"y", "yes", "yea"});
-constexpr Label NoLabel(FALSE, {"n", "no", "Nope"});
+constexpr Label YesLabel(YES, {"y", "yes", "yea"});
+constexpr Label NoLabel(NO, {"n", "no", "Nope"});
 

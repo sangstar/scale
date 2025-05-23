@@ -9,6 +9,11 @@
 #include <thread>
 #include "ring_buffers.hpp"
 
+enum LogLevel {
+    NOTSET,
+    DEBUG,
+};
+
 class AsyncLogger {
 public:
     void display_loop();
@@ -27,8 +32,9 @@ private:
 };
 
 struct LoggingContext {
+    LogLevel level;
     AsyncLogger logger;
-    LoggingContext(const std::string& filename);
+    LoggingContext(const std::string& filename, LogLevel level);
     ~LoggingContext() = default;
     void write(const char* message);
 };

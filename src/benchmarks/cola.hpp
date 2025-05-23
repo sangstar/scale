@@ -15,8 +15,8 @@ public:
 
     static constexpr std::pair<std::string_view, LabelStates> label_map[] = {
         {"-1", NO_LABEL},
-        {"0", FALSE},
-        {"1", TRUE},
+        {"0", NO},
+        {"1", YES},
     };
 
     constexpr static std::string_view pre_formatted_text =
