@@ -15,7 +15,7 @@ like:
   latency and evaluation metrics and writes the results to a file
   or stdout
 
-Generally very fast due to mostly relying on lock-free buffers
-to allow for aggressively concurrent request querying and
-processing.
+Generally very fast, mostly bottlenecked by network-bound I/O. Able to 
+send, receive, and process around 100 requests per second from the official
+OpenAI REST API.
 
