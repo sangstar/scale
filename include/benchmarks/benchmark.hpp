@@ -12,43 +12,18 @@
 #include "labels.hpp"
 #include <atomic>
 #include <fstream>
-#include <cctype>
+#include "benchmark_concept.hpp"
 #include "../result_types.hpp"
+#include "utils.hpp"
+#include "constants.hpp"
 
-constexpr int NumWorkersPerRequest = 4;
-constexpr int NumConcurrentRequests = 50;
 
 using json = nlohmann::json;
 
-struct YesNoLogprobPair {
-    std::optional<logprob_entry> yes = std::nullopt;
-    std::optional<logprob_entry> no = std::nullopt;
-
-};
-
-enum RowDatatypes {
-    STRING,
-    INTEGER,
-};
-
-enum AnswerType {
-    MultipleChoice,
-    YesOrNo,
-};
-
-template <typename T>
-concept Benchmark = requires(T benchmark, json& row)
-{
-    { benchmark.request_from_dataset_row(row) } -> std::same_as<RequestParameters>;
-    { benchmark.pre_formatted_text } -> std::same_as<const std::string_view&>;
-    { benchmark.dataset } -> std::same_as<json&>;
-    { benchmark.label_map } -> std::convertible_to<LabelStatesMapping*>;
-};
-
-template <Benchmark B>
+template<Benchmark B>
 LabelStates get_label_state(const B& bench, const RequestParameters& req) {
     auto label = req.golden_label;
-    for (auto [k, v] : bench.label_map) {
+    for (auto [k, v]: bench.label_map) {
         if (label == k) {
             return v;
         }
@@ -56,14 +31,8 @@ LabelStates get_label_state(const B& bench, const RequestParameters& req) {
     return NO_LABEL;
 }
 
-bool guessed_correctly(LabelStates state, const RequestResults& res);
-
-void report_results(FinalMetrics& metrics);
-
-YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const RequestResults& res);
-
-template <Benchmark B>
-std::vector<json> get_output_json(const RequestResults& res, const B& bench) {
+template<Benchmark B>
+std::vector<json> get_output_json(const RequestResult& res, const B& bench) {
     std::vector<json> json_vec;
     auto state = get_label_state(bench, res.params);
     auto correct = guessed_correctly(state, res);
@@ -95,20 +64,19 @@ std::vector<json> get_output_json(const RequestResults& res, const B& bench) {
     return std::move(json_vec);
 };
 
-template <Benchmark Bench>
+template<Benchmark Bench>
 struct BenchmarkContext {
     Bench benchmark;
     bool finished;
-    std::shared_ptr<MPSCRingBuffer<RequestResults>> results_buffer;
+    std::shared_ptr<MPSCRingBuffer<RequestResult>> results_buffer;
     std::shared_ptr<CURLHandler> shared_client;
+
     BenchmarkContext(Bench bench, std::shared_ptr<CURLHandler> shared_client) : benchmark(bench), finished(false),
         shared_client(shared_client) {
-        results_buffer = std::make_shared<MPSCRingBuffer<RequestResults>>();
+        results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
     }
 
     void perform_benchmark(const char* filename_jsonl, LoggingContext* maybe_logger) {
-
-
         FinalMetrics metrics;
         metrics.output_jsonl = filename_jsonl;
         metrics.requests_processed = 0;
@@ -135,15 +103,14 @@ struct BenchmarkContext {
                 auto params = this->benchmark.request_from_dataset_row(idx);
                 send_and_add_to_buffer(params);
             }
-
         };
 
         std::vector<std::thread> workers;
-        for (int i = 0; i < NumConcurrentRequests; ++i) {
+        for (int i = 0; i < WorkerConstants::NumConcurrentRequests; ++i) {
             std::thread t(request_worker_closure);
             workers.emplace_back(std::move(t));
         }
-        for (int i = 0; i < NumConcurrentRequests; ++i) {
+        for (int i = 0; i < WorkerConstants::NumConcurrentRequests; ++i) {
             workers[i].join();
         }
         finished = true;
@@ -158,22 +125,23 @@ struct BenchmarkContext {
             throw std::runtime_error("failed to open output file");
         }
 
+
         // With many producers, it's unlikely for this thread to be so quick
         // that it finishes early due to an empty buffer before all producers
         // are finished, so we can probably get away with not signaling done
+        RequestResult* result;
         while (true) {
-            RingResult<RequestResults> result = this->results_buffer->fetch();
-            if (result.state == SUCCESS) {
+            auto state = this->results_buffer->fetch(result);
+            if (state == SUCCESS) {
                 metrics.requests_processed++;
-                const auto& content = result.content.value();
-                auto jsons = get_output_json<Bench>(content, this->benchmark);
-                for (auto& jsonl : jsons) {
+                auto jsons = get_output_json<Bench>(*result, this->benchmark);
+                for (auto& jsonl: jsons) {
                     auto jsonl_str = jsonl.dump();
                     metrics.logger->write(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()).c_str());
                     outfile << jsonl_str << '\n';
                 }
             }
-            if (result.state == EMPTY && this->finished) {
+            if (state == EMPTY && this->finished) {
                 break;
             }
         }
@@ -184,24 +152,30 @@ struct BenchmarkContext {
 
     BenchmarkContext(Bench bench, const char* uri) : benchmark(bench), finished(false) {
         shared_client = std::make_shared<CURLHandler>(uri, std::getenv("OPENAI_API_KEY"));
-        results_buffer = std::make_shared<MPSCRingBuffer<RequestResults>>();
+        results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
     }
 
     void send_and_add_to_buffer(RequestParameters& req) {
         auto res = std::make_shared<std::vector<CompletionResults>>();
-        const auto id = this->shared_client->post_stream(req);
+        const auto resp = this->shared_client->post_stream(req);
         std::mutex res_mutex;
 
+        // post_stream creates a writing thread and starts writing to an unordered_map
+        // at key `id`.
 
+        // reader threads are spawned, and perform this closure.
+        // they are given the `id` the writer is writing to, fetch it,
+        // and do work on it.
         int max_retries = 2;
-        auto closure = [this, id, res, &res_mutex, max_retries] {
+        auto closure = [this, &resp, res, &res_mutex, max_retries] {
             int retries = 0;
+            std::string* json_str;
             while (true) {
-                bool producer_finished = this->shared_client->write_to_buffer_finished(id);
-                auto val = this->shared_client->fetch(id);
-                if (val.state == SUCCESS) {
+                bool producer_finished = this->shared_client->write_to_buffer_finished(resp);
+                auto state = this->shared_client->fetch(resp, json_str);
+                if (state == SUCCESS) {
                     bool fine_to_add = true;
-                    CompletionResults results(val.content.value());
+                    CompletionResults results(*json_str);
 
                     // For finish_reason = length, an empty response
                     // is thrown back at the end indicating it reached
@@ -212,7 +186,7 @@ struct BenchmarkContext {
                     //       multiple Choices and one has text = "" and one doesn't?
                     //       this would disqualify all
 
-                    for (auto& choice : results.choices) {
+                    for (auto& choice: results.choices) {
                         if (choice.text == "") {
                             fine_to_add = false;
                         }
@@ -222,7 +196,7 @@ struct BenchmarkContext {
                         std::lock_guard<std::mutex> lock(res_mutex);
                         res->emplace_back(std::move(results));
                     }
-                } else if (val.state == EMPTY && producer_finished) {
+                } else if (state == EMPTY && producer_finished) {
                     if (max_retries == retries) {
                         break;
                     }
@@ -233,17 +207,17 @@ struct BenchmarkContext {
         };
 
         std::vector<std::thread> workers;
-        for (int i = 0; i < NumWorkersPerRequest; ++i) {
+        for (int i = 0; i < WorkerConstants::NumWorkersPerRequest; ++i) {
             std::thread t(closure);
             workers.emplace_back(std::move(t));
         }
-        auto latencies = shared_client->await(id);
-        for (int i = 0; i < NumWorkersPerRequest; ++i) {
+        auto latencies = shared_client->await(resp);
+        for (int i = 0; i < WorkerConstants::NumWorkersPerRequest; ++i) {
             workers[i].join();
         }
 
         if (res->size() > 0) {
-            RequestResults result;
+            RequestResult result;
 
             // res doesn't need to be shared anymore, so dereference off
             // the shared_ptr safeguard and move the result for the caller
@@ -253,8 +227,7 @@ struct BenchmarkContext {
             result.params = req;
 
             results_buffer->push(result);
-        }
-        else {
+        } else {
             Logger.write("Worker found no jobs from request buffer.");
         }
     }

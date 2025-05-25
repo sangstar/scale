@@ -4,32 +4,34 @@
 
 #include "logger.hpp"
 #include <iostream>
+#include <unistd.h>
+#include <fcntl.h>
 
 
-
-AsyncLogger::AsyncLogger(const std::string& filename) {
+AsyncLogger::AsyncLogger(const std::string& filename) : done(false) {
     if (filename == "stdout") {
-        stream = &std::cout;
+        fd = STDOUT_FILENO;
     } else {
-        owned_log_file.open(filename);
-        if (!owned_log_file.is_open()) {
-            throw std::runtime_error("Failed to open log file: " + filename);
+        fd = open("log.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd == -1) {
+            perror("open");
+            exit(1);
         }
-        stream = &owned_log_file;
     }
-
     // Deploy logger thread
     logger = std::thread(&AsyncLogger::display_loop, this);
 }
 
-AsyncLogger::~AsyncLogger() {
-    {
+AsyncLogger::~AsyncLogger() { {
         std::lock_guard<std::mutex> lock(mu);
         done = true;
         ready_to_read = true;
     }
     cv.notify_one(); // Make sure the display loop isn't stuck waiting to be able to query `done`
     logger.join();
+    if (fd != STDOUT_FILENO) {
+        close(fd);
+    }
 }
 
 void AsyncLogger::write(const char* message) {
@@ -42,7 +44,8 @@ void AsyncLogger::write(const char* message) {
     cv.notify_one();
 }
 
-LoggingContext::LoggingContext(const std::string& filename, LogLevel level) : logger(filename), level(level) {}
+LoggingContext::LoggingContext(const std::string& filename, LogLevel level) : logger(filename), level(level) {
+}
 
 void LoggingContext::write(const char* message) {
     if (level == DEBUG) {
@@ -57,9 +60,11 @@ void AsyncLogger::display_loop() {
         if (done) {
             break;
         }
-        auto to_display = messages.fetch();
-        if (to_display.state == SUCCESS) {
-            std::cout << "DEBUG: " << to_display.content.value() << std::endl;
+        std::string* to_display;
+        auto state = messages.fetch(to_display);
+        if (state == SUCCESS) {
+            auto to_write = std::format("DEBUG: {}\n", *to_display);
+            ::write(fd, to_write.c_str(), to_write.size());
         }
     }
 }

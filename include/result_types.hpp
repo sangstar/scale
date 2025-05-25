@@ -8,10 +8,11 @@
 #include "latency_metrics.hpp"
 #include "logger.hpp"
 
-struct RequestResults {
+struct RequestResult {
     RequestParameters params;
     std::vector<CompletionResults> completion_results;
     LatencyMetrics latencies;
+
     std::vector<json> to_json();
 };
 
@@ -32,7 +33,7 @@ struct ParsedRequestResult {
     std::string finish_reason;
     std::string text;
 
-    void from_json(const json& j, ParsedRequestResult& b) {
+    static void from_json(const json& j, ParsedRequestResult& b) {
         j.at("e2e_latency").get_to(b.e2e_latency);
         j.at("ttft").get_to(b.ttft);
         j.at("id").get_to(b.id);

@@ -11,7 +11,7 @@ struct StreamingResponse {
     bool got_ttft;
     time_point start;
     LatencyMetrics latencies;
-    SPMCRingBuffer ring;
+    SPMCRingBuffer<std::string> ring;
     std::thread t;
     bool done;
 };

@@ -16,8 +16,6 @@
 
 using json = nlohmann::json;
 
-using ResponseBuffer = std::unordered_map<std::thread::id, std::shared_ptr<StreamingResponse>>;
-
 static size_t write_cb_default(void* contents, size_t size, size_t nmemb, void* userp);
 
 static size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp);
@@ -29,17 +27,22 @@ static size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void*
 class CURLHandler {
 public:
     std::string uri;
+
     explicit CURLHandler(const char* uri, const char* api_key = "");
+
     static std::string get(const char* query);
-    std::thread::id post_stream(RequestParameters& req);
-    LatencyMetrics await(std::thread::id req_id);
-    RingResult<std::string> fetch(std::thread::id req_id);
-    bool write_to_buffer_finished(std::thread::id);
+
+    std::shared_ptr<StreamingResponse> post_stream(RequestParameters& req);
+
+    LatencyMetrics await(std::shared_ptr<StreamingResponse> resp);
+
+    RingState fetch(std::shared_ptr<StreamingResponse> resp, std::string*& to_write_to);
+
+    bool write_to_buffer_finished(std::shared_ptr<StreamingResponse>);
 
 private:
     std::string api_key;
-    curl_slist *headers = nullptr;
-    ResponseBuffer buf;
+    curl_slist* headers = nullptr;
 };
 
 json parse_to_json(std::string json_str);

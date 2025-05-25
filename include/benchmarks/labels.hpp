@@ -18,9 +18,10 @@ struct Label {
     LabelStates state;
     const std::array<std::string_view, 3> allowed_strings;
 
-    constexpr Label(LabelStates state_, std::array<std::string_view, 3> allowed_strings_) :
-    allowed_strings(allowed_strings_),
-    state(state_) {};
+    constexpr Label(LabelStates state_, std::array<std::string_view, 3> allowed_strings_) : allowed_strings(
+            allowed_strings_),
+        state(state_) {
+    };
 };
 
 constexpr Label YesLabel(YES, {"y", "yes", "yea"});

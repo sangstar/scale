@@ -10,21 +10,13 @@
 using json = nlohmann::json;
 using TopLogprobs = std::vector<std::unordered_map<std::string, float>>;
 
-struct logprob_entry {
-    std::string text;
-    std::optional<float> logprob = std::nullopt;
-    std::string dump() {
-        if (logprob.has_value()) {
-            return std::format("{}",logprob.value());
-        }
-        return std::format("N/A", text);
-    }
-};
-
 struct Logprobs {
     Logprobs() = default;
+
     Logprobs(json logprobs_json);
+
     ~Logprobs() = default;
+
     std::vector<std::string> tokens;
     std::vector<float> token_logprobs;
     TopLogprobs top_logprobs;
@@ -35,6 +27,7 @@ struct Choice {
     std::string finish_reason;
     int index;
     std::string text;
+
     Choice(json choice_json);
 };
 
@@ -44,8 +37,11 @@ struct Choice {
 //       here reflects that assumption
 struct CompletionResults {
     CompletionResults() = default;
+
     ~CompletionResults() = default;
+
     CompletionResults(std::string json_str);
+
     std::string id;
     std::string object;
     int created;

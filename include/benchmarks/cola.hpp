@@ -7,11 +7,16 @@
 
 class ColaBenchmark {
 public:
-    ColaBenchmark(json&& data) : dataset(std::move(data)) {};
+    ColaBenchmark(Dataset dataset_) : dataset(std::move(dataset_)) {
+    };
+
     ~ColaBenchmark() = default;
-    RequestParameters request_from_dataset_row(int idx) const;
-    json dataset;
-    size_t size();
+
+    RequestParameters request_from_dataset_row(int idx);
+
+    Dataset dataset;
+
+    size_t size() const;
 
     static constexpr std::pair<std::string_view, LabelStates> label_map[] = {
         {"-1", NO_LABEL},
@@ -20,6 +25,6 @@ public:
     };
 
     constexpr static std::string_view pre_formatted_text =
-        "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
+            "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
 };
 

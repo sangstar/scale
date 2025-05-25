@@ -14,13 +14,13 @@ constexpr size_t data_token_len = std::string("data:").size();
 
 
 size_t write_cb_default(void* contents, size_t size, size_t nmemb, void* userp) {
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    ((std::string *) userp)->append((char *) contents, size * nmemb);
     return size * nmemb;
 }
 
 size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp) {
-    auto as_streaming_resp = (StreamingResponse*)userp;
-    auto content = std::string((char*)contents, size * nmemb);
+    auto as_streaming_resp = (StreamingResponse *) userp;
+    auto content = std::string((char *) contents, size * nmemb);
     if (!as_streaming_resp->got_ttft) {
         auto got_token_time = std::chrono::high_resolution_clock::now();
         as_streaming_resp->latencies.ttft = got_token_time - as_streaming_resp->start;
@@ -29,8 +29,11 @@ size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp)
     return size * nmemb;
 }
 
-CURLHandler::CURLHandler(const char *uri, const char *api_key) {
+CURLHandler::CURLHandler(const char* uri, const char* api_key) {
     this->uri = std::string(uri);
+    if (!api_key) {
+        throw std::runtime_error("No api key provided.");
+    }
     this->api_key = std::string(api_key);
     headers = curl_slist_append(headers, "Content-Type: application/json");
     std::string token_header = std::format("Authorization: Bearer {}", this->api_key);
@@ -38,7 +41,7 @@ CURLHandler::CURLHandler(const char *uri, const char *api_key) {
 }
 
 std::string CURLHandler::get(const char* query) {
-    CURL *ephemeral = curl_easy_init();
+    CURL* ephemeral = curl_easy_init();
     std::string response;
 
     curl_easy_setopt(ephemeral, CURLOPT_URL, query);
@@ -50,10 +53,15 @@ std::string CURLHandler::get(const char* query) {
         std::cerr << "curl error: " << curl_easy_strerror(res) << "\n";
 
     curl_easy_cleanup(ephemeral);
+
+    if (response.empty()) {
+        throw std::runtime_error("No response.");
+    }
+
     return response;
 }
 
-std::thread::id CURLHandler::post_stream(RequestParameters& req) {
+std::shared_ptr<StreamingResponse> CURLHandler::post_stream(RequestParameters& req) {
     auto post_data = std::make_shared<std::string>(req.to_json().dump());
     auto resp = std::make_shared<StreamingResponse>();
     resp->start = std::chrono::high_resolution_clock::now();
@@ -82,16 +90,13 @@ std::thread::id CURLHandler::post_stream(RequestParameters& req) {
             resp->done = true;
 
             curl_easy_cleanup(ephemeral);
-    }
+        }
     );
-    auto id = t.get_id();
     resp->t = std::move(t);
-    buf[id] = resp;
-    return id;
+    return resp;
 }
 
-LatencyMetrics CURLHandler::await(std::thread::id req_id) {
-    auto resp = buf[req_id].get();
+LatencyMetrics CURLHandler::await(std::shared_ptr<StreamingResponse> resp) {
     if (!resp) {
         throw std::runtime_error("response stream is null");
     }
@@ -101,12 +106,18 @@ LatencyMetrics CURLHandler::await(std::thread::id req_id) {
     return resp->latencies;
 }
 
-RingResult<std::string> CURLHandler::fetch(std::thread::id req_id) {
-    return buf[req_id].get()->ring.fetch();
+RingState CURLHandler::fetch(std::shared_ptr<StreamingResponse> resp, std::string*& to_write_to) {
+    if (resp) {
+        return resp->ring.fetch(to_write_to);
+    }
+    throw std::runtime_error("Invalid buffer.");
 }
 
-bool CURLHandler::write_to_buffer_finished(std::thread::id id) {
-    return this->buf[id]->ring.producer_finished;
+bool CURLHandler::write_to_buffer_finished(std::shared_ptr<StreamingResponse> resp) {
+    if (resp) {
+        return resp->ring.producer_finished;
+    }
+    return false;
 }
 
 bool str_contains(const std::string& str, const std::string& to_test) {
@@ -114,7 +125,7 @@ bool str_contains(const std::string& str, const std::string& to_test) {
     std::string might_be_chunk;
 
     for (int i = 0; i < str.size(); i++) {
-        might_be_chunk = str.substr(i, i + comparison_window);
+        might_be_chunk = str.substr(i, comparison_window);
         if (might_be_chunk == to_test) {
             return true;
         }
@@ -144,7 +155,7 @@ std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
                 might_be_chunk = content.substr(i, 5);
             }
         }
-        if (found_start_of_chunk && content[i] == '}' && content[i+1] == '\n') {
+        if (found_start_of_chunk && content[i] == '}' && content[i + 1] == '\n') {
             // Need to increment this by one to avoid an off-by-one with substringing
             end = i + 1;
         }

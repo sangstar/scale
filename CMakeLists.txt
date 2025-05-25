@@ -3,29 +3,46 @@ project(scale)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(scale src/main.cpp
-        src/benchmarks/benchmark.hpp
-        src/benchmarks/cola.hpp
-        src/benchmarks/benchmark.cpp
+
+Include(FetchContent)
+
+FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG        v3.4.0
+)
+
+FetchContent_MakeAvailable(Catch2)
+
+add_library(scale_core
         src/curl.cpp
-        src/curl.hpp
-        src/benchmarks/cola.cpp
-        src/ring_buffers.cpp
-        src/ring_buffers.hpp
-        src/completion_types.cpp
-        src/completion_types.hpp
-        src/streaming_response.cpp
-        src/streaming_response.hpp
-        src/request_parameters.cpp
-        src/request_parameters.hpp
-        src/result_types.cpp
-        src/result_types.hpp
-        src/latency_metrics.cpp
-        src/latency_metrics.hpp
-        src/benchmarks/labels.cpp
-        src/benchmarks/labels.hpp
         src/logger.cpp
-        src/logger.hpp)
+        src/benchmarks/benchmark.cpp
+        src/benchmarks/cola.cpp
+        src/benchmarks/utils.cpp
+        src/result_types.cpp
+        include/benchmarks/dataset.cpp
+)
+
+# Add include paths
+target_include_directories(scale_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
+
+# Link against CURL
+find_package(CURL REQUIRED)
+target_link_libraries(scale_core PRIVATE CURL::libcurl)
+
+add_executable(scale src/main.cpp)
+target_link_libraries(scale PRIVATE scale_core)
+
+add_executable(tests tests/test.cpp)
+target_link_libraries(tests PRIVATE Catch2::Catch2WithMain scale_core)
+
+
+target_include_directories(scale PUBLIC "${PROJECT_SOURCE_DIR}/include")
 
 find_package(CURL REQUIRED)
 target_link_libraries(scale PRIVATE CURL::libcurl)
+
+include(CTest)
+include(Catch)
+catch_discover_tests(tests)
