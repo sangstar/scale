@@ -87,7 +87,26 @@ bool guessed_correctly(LabelStates state, const RequestResult& res) {
 void report_results(FinalMetrics& metrics) {
     auto benchmark_duration = metrics.benchmark_end - metrics.benchmark_start;
     auto seconds = duration_cast<std::chrono::duration<double>>(benchmark_duration).count();
-    Logger.info(std::format("{} requests processed in {}s.", metrics.requests_processed, seconds));
+    double ttft_sum = 0;
+    double e2e_latency_sum = 0;
+    double guessed_correct = 0;
+    for (const auto& result : metrics.req_results) {
+        ttft_sum += result.latencies.ttft;
+        e2e_latency_sum += result.latencies.end_to_end_latency;
+        if (result.guessed_correctly == true) {
+            guessed_correct++;
+        }
+    }
+    auto avg_ttft = ttft_sum / metrics.requests_processed;
+    auto avg_e2e_latency = e2e_latency_sum / metrics.requests_processed;
+    auto accuracy = guessed_correct / metrics.requests_processed;
+
+    Logger.info(std::format("{} requests processed in {:3f}s, {:.3f} reqs/sec"
+                            " | Average TTFT: {:.3f}s"
+                            " | Average End-to-End Latency: {:.3f}s"
+                            " | Accuracy: {:.2f}%", metrics.requests_processed,
+                            seconds, metrics.requests_processed / seconds,
+                            avg_ttft, avg_e2e_latency, accuracy));
 }
 
 YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const RequestResult& res) {

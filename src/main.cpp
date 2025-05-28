@@ -87,11 +87,6 @@ int main(int argc, char* argv[]) {
     Logger.info("Beginning benchmark..");
     auto ctx = BenchmarkContext<ColaBenchmark>(benchmark, base_url.c_str());
 
-    auto start = std::chrono::high_resolution_clock::now();
-    ctx.perform_benchmark(outfile.c_str(), &Logger);
-    auto end = std::chrono::high_resolution_clock::now();
-    auto benchmark_duration = end - start;
-    auto seconds = duration_cast<std::chrono::duration<double>>(benchmark_duration).count();
-    std::cout << "Took " << seconds << "s";
+    ctx.perform_benchmark(outfile.c_str());
     return 1;
 }

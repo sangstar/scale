@@ -35,8 +35,7 @@ template<Benchmark B>
 std::vector<json> get_output_json(const RequestResult& res, const B& bench) {
     std::vector<json> json_vec;
     auto state = get_label_state(bench, res.params);
-    auto correct = guessed_correctly(state, res);
-    auto logprobs_for_yes_and_no = get_yes_no_logprobs(state, correct, res);
+    auto logprobs_for_yes_and_no = get_yes_no_logprobs(state, res.guessed_correctly, res);
     for (const auto& compl_result: res.completion_results) {
         json j = json::object();
         j["e2e_latency"] = res.latencies.end_to_end_latency;
@@ -45,7 +44,7 @@ std::vector<json> get_output_json(const RequestResult& res, const B& bench) {
         j["model"] = compl_result.model;
         j["object"] = compl_result.object;
         j["prompt"] = res.params.prompt;
-        j["guessed_correctly"] = correct;
+        j["guessed_correctly"] = res.guessed_correctly;
         if (logprobs_for_yes_and_no.yes.has_value()) {
             j["yes_logprob"] = logprobs_for_yes_and_no.yes.value().dump();
         } else {
@@ -72,7 +71,7 @@ struct BenchmarkContext {
     std::shared_ptr<CURLHandler> shared_client;
 
     BenchmarkContext(Bench bench, std::shared_ptr<CURLHandler> shared_client) : benchmark(bench), finished(false),
-        shared_client(shared_client) {
+        shared_client(std::move(shared_client)) {
         results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
     }
 
@@ -90,7 +89,7 @@ struct BenchmarkContext {
     //    them.
     // 4. When a `send_and_add_to_buffer` worker is finished, it finally pushes the result to
     //    the writing thread from step 2 which writes it to jsonl
-    void perform_benchmark(const char* filename_jsonl, LoggingContext* maybe_logger) {
+    void perform_benchmark(const char* filename_jsonl) {
         FinalMetrics metrics;
         metrics.output_jsonl = filename_jsonl;
         metrics.requests_processed = 0;
@@ -144,6 +143,7 @@ struct BenchmarkContext {
         while (true) {
             auto state = this->results_buffer->fetch(result);
             if (state == SUCCESS) {
+                metrics.req_results.emplace_back(*result);
                 metrics.requests_processed++;
                 auto jsons = get_output_json<Bench>(*result, this->benchmark);
                 for (auto& jsonl: jsons) {
@@ -239,7 +239,8 @@ struct BenchmarkContext {
             result.completion_results = std::move(*res);
             result.latencies = latencies;
             result.params = req;
-
+            auto state = get_label_state(this->benchmark, result.params);
+            result.guessed_correctly = guessed_correctly(state, result);
             results_buffer->push(result);
         } else {
 

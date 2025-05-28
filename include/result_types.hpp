@@ -11,8 +11,8 @@
 struct RequestResult {
     RequestParameters params;
     std::vector<CompletionResults> completion_results;
+    bool guessed_correctly;
     LatencyMetrics latencies;
-
     std::vector<json> to_json();
 };
 
@@ -53,4 +53,5 @@ struct FinalMetrics {
     time_point benchmark_start;
     time_point benchmark_end;
     int requests_processed;
+    std::vector<RequestResult> req_results;
 };
