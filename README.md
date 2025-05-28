@@ -52,3 +52,4 @@ INFO: Req 999: {"e2e_latency":1.479182,"finish_reason":"length","guessed_correct
 INFO: 1000 requests processed in 8.093664667s.
 ```
 
+Aggregated metrics and performance evaluation to come!
