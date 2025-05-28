@@ -99,7 +99,7 @@ void report_results(FinalMetrics& metrics) {
     }
     auto avg_ttft = ttft_sum / metrics.requests_processed;
     auto avg_e2e_latency = e2e_latency_sum / metrics.requests_processed;
-    auto accuracy = guessed_correct / metrics.requests_processed;
+    auto accuracy = guessed_correct / metrics.requests_processed * 100;
 
     Logger.info(std::format("{} requests processed in {:3f}s, {:.3f} reqs/sec"
                             " | Average TTFT: {:.3f}s"
