@@ -4,7 +4,13 @@
 #include "logger.hpp"
 
 const std::string filename = "stdout";
-LoggingContext Logger(filename, NOTSET);
+
+#ifdef NDEBUG
+LoggingContext Logger(filename, INFO);
+#else
+LoggingContext Logger(filename, DEBUG);
+#endif
+
 
 const std::string_view help_text = R"(
 Usage: scale [OPTIONS]
@@ -70,7 +76,7 @@ int main(int argc, char* argv[]) {
     check_required_args(split, "--split");
     check_required_args(outfile, "--outfile");
 
-
+    Logger.info("Fetching data..");
 
     DatasetParams params(id.c_str(), config.c_str(), split.c_str());
     params.ms_between_curl = req_rate_as_int;
@@ -78,7 +84,7 @@ int main(int argc, char* argv[]) {
     ColaBenchmark benchmark(std::move(dataset));
 
 
-    Logger.write("Beginning benchmark..");
+    Logger.info("Beginning benchmark..");
     auto ctx = BenchmarkContext<ColaBenchmark>(benchmark, base_url.c_str());
 
     auto start = std::chrono::high_resolution_clock::now();

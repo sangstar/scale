@@ -45,7 +45,7 @@ void AsyncLogger::write(std::string message) {
 }
 
 size_t LoggingContext::set_start() {
-    if (DEBUG) {
+    if (this->level == DEBUG) {
         if (logger.time_starts.size() > 10000) {
             logger.time_starts.clear();
             logger.time_starts.shrink_to_fit();
@@ -54,23 +54,30 @@ size_t LoggingContext::set_start() {
         logger.time_starts.emplace_back(time_start);
         return logger.time_starts.size() - 1;
     }
+    return 0;
 }
 
 void LoggingContext::set_stop_and_display_time(size_t idx, const char* name) {
-    if (DEBUG) {
+    if (this->level == DEBUG) {
         auto end_minus_start = std::chrono::high_resolution_clock::now() - logger.time_starts[idx];
         auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(end_minus_start).count();
-        auto msg = std::format("{} took {} s", name, duration);
-        write(msg.c_str());
+        auto msg = std::format("DEBUG: {} took {} s", name, duration);
+        logger.write(msg);
     }
 }
 
 LoggingContext::LoggingContext(const std::string& filename, LogLevel level) : logger(filename), level(level) {
 }
 
-void LoggingContext::write(std::string message) {
+void LoggingContext::debug(std::string message) {
     if (level == DEBUG) {
-        logger.write(std::move(message));
+        logger.write(std::format("DEBUG: {}", std::move(message)));
+    }
+};
+
+void LoggingContext::info(std::string message) {
+    if (level == INFO) {
+        logger.write(std::format("INFO: {}", std::move(message)));
     }
 };
 
@@ -86,7 +93,7 @@ void AsyncLogger::display_loop() {
             if (to_display.content.empty()) {
                 throw std::runtime_error("Fail");
             }
-            auto to_write = std::format("DEBUG: {}\n", to_display.content);
+            auto to_write = std::format("{}\n", to_display.content);
             ::write(fd, to_write.c_str(), to_write.size());
         }
     }

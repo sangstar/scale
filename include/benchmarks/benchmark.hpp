@@ -94,9 +94,6 @@ struct BenchmarkContext {
         FinalMetrics metrics;
         metrics.output_jsonl = filename_jsonl;
         metrics.requests_processed = 0;
-        if (maybe_logger) {
-            metrics.logger = maybe_logger;
-        }
         metrics.benchmark_start = std::chrono::high_resolution_clock::now();
 
 
@@ -151,7 +148,7 @@ struct BenchmarkContext {
                 auto jsons = get_output_json<Bench>(*result, this->benchmark);
                 for (auto& jsonl: jsons) {
                     auto jsonl_str = jsonl.dump();
-                    metrics.logger->write(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()).c_str());
+                    Logger.info(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()).c_str());
                     outfile << jsonl_str << '\n';
                 }
             }
@@ -248,7 +245,7 @@ struct BenchmarkContext {
 
             // If the worker found no work to be processed from the stream buffer, just make a note of
             // that and finish.
-            Logger.write("Worker found no jobs from request buffer.");
+            Logger.debug("Worker found no jobs from request buffer.");
         }
     }
 };

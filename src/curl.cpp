@@ -5,7 +5,6 @@
 #include "curl.hpp"
 #include "benchmarks/benchmark.hpp"
 #include <thread>
-#include <fstream>
 #include <random>
 #include "logger.hpp"
 
@@ -71,24 +70,35 @@ std::shared_ptr<StreamingResponse> CURLHandler::post_stream(RequestParameters& r
     std::thread t(
         [post_data, resp, this] {
             CURL* ephemeral = curl_easy_init();
-            double namelookup_time, connect_time, starttransfer_time, total_time;
             curl_easy_setopt(ephemeral, CURLOPT_URL, this->uri.c_str());
             curl_easy_setopt(ephemeral, CURLOPT_HTTPHEADER, headers);
             curl_easy_setopt(ephemeral, CURLOPT_POST, 1L);
             curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDS, post_data->c_str());
             curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDSIZE, post_data->size());
             curl_easy_setopt(ephemeral, CURLOPT_WRITEFUNCTION, write_cb_to_queue);
+            if (Logger.level == DEBUG) {
+                curl_easy_setopt(ephemeral, CURLOPT_VERBOSE, 1L);
+            }
             curl_easy_setopt(ephemeral, CURLOPT_WRITEDATA, resp.get());
             auto idx = Logger.set_start();
             resp->start = std::chrono::high_resolution_clock::now();
             auto res = curl_easy_perform(ephemeral);
-            curl_easy_getinfo(ephemeral, CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
-            curl_easy_getinfo(ephemeral, CURLINFO_CONNECT_TIME, &connect_time);
-            curl_easy_getinfo(ephemeral, CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
-            curl_easy_getinfo(ephemeral, CURLINFO_TOTAL_TIME, &total_time);
-            resp->latencies.ttft = starttransfer_time;
-            resp->latencies.end_to_end_latency = total_time;
+
+            double name_lookup, connect, ssl, start_transfer, total;
+            curl_easy_getinfo(ephemeral, CURLINFO_NAMELOOKUP_TIME, &name_lookup);
+            curl_easy_getinfo(ephemeral, CURLINFO_CONNECT_TIME, &connect);
+            curl_easy_getinfo(ephemeral, CURLINFO_APPCONNECT_TIME, &ssl);
+            curl_easy_getinfo(ephemeral, CURLINFO_STARTTRANSFER_TIME, &start_transfer);
+            curl_easy_getinfo(ephemeral, CURLINFO_TOTAL_TIME, &total);
+
+            resp->latencies.ttft = start_transfer;
+            resp->latencies.end_to_end_latency = total;
             Logger.set_stop_and_display_time(idx, "e2e from server");
+            Logger.debug(std::format(
+              "timing: DNS={}s, TCP={}s, SSL={}s, TTFT={}s, Total={}s",
+              name_lookup, connect - name_lookup, ssl - connect,
+              start_transfer, total
+            ));
             if (res != CURLE_OK) {
                 // TODO: C-style error here is weird
                 fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
@@ -141,8 +151,6 @@ bool str_contains(const std::string& str, const std::string& to_test) {
     return false;
 }
 
-// TODO: Refactor this to use str_contains
-//       this sometimes breaks
 std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
     int start = 0;
     int end = 0;
@@ -194,8 +202,7 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
             done = true;
             continue;
         }
-        auto msg = std::format("Got chunk: {}", chunk);
-        Logger.write(msg.c_str());
+        Logger.debug(std::format("Got chunk: {}", chunk));
         // This is illegal if the above condition is false
         if (chunk.back() != '}') {
             throw std::runtime_error("chunking error");

@@ -85,20 +85,9 @@ bool guessed_correctly(LabelStates state, const RequestResult& res) {
 }
 
 void report_results(FinalMetrics& metrics) {
-    std::function<void(std::string)> polymorphic_writer;
-    if (metrics.logger) {
-        polymorphic_writer = [=](std::string to_write) {
-            metrics.logger->write(to_write.c_str());
-        };
-    } else {
-        polymorphic_writer = [](std::string to_write) {
-            std::cout << to_write << std::endl;
-        };
-    }
-
     auto benchmark_duration = metrics.benchmark_end - metrics.benchmark_start;
     auto seconds = duration_cast<std::chrono::duration<double>>(benchmark_duration).count();
-    polymorphic_writer(std::format("{} requests processed in {}s.", metrics.requests_processed, seconds));
+    Logger.info(std::format("{} requests processed in {}s.", metrics.requests_processed, seconds));
 }
 
 YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const RequestResult& res) {

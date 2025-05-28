@@ -11,6 +11,7 @@
 
 enum LogLevel {
     NOTSET,
+    INFO,
     DEBUG,
 };
 
@@ -45,7 +46,8 @@ struct LoggingContext {
 
     ~LoggingContext() = default;
 
-    void write(std::string message);
+    void debug(std::string message);
+    void info(std::string message);
 
     size_t set_start();
     void set_stop_and_display_time(size_t id, const char* name);

@@ -50,7 +50,6 @@ struct ParsedRequestResult {
 
 struct FinalMetrics {
     const char* output_jsonl;
-    LoggingContext* logger;
     time_point benchmark_start;
     time_point benchmark_end;
     int requests_processed;

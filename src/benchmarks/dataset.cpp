@@ -12,7 +12,7 @@
 bool Dataset::add_rows(std::string& uri) {
     auto resp = CURLHandler::get(uri.c_str());
     if (str_contains(resp, BenchmarkingConstants::rate_limit_text.data())) {
-        Logger.write("Hit rate limit. Slowing down...");
+        Logger.info("Hit rate limit. Slowing down...");
         std::this_thread::sleep_for(std::chrono::milliseconds(30'000));
         return false;
     }
@@ -54,6 +54,6 @@ Dataset DatasetParams::get_dataset() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(ms_between_curl));
     }
-    Logger.write(std::format("Got {} rows.", dataset.rows.size()));
+    Logger.info(std::format("Got {} rows.", dataset.rows.size()));
     return std::move(dataset);
 }

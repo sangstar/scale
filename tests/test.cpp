@@ -114,12 +114,12 @@ TEST_CASE( "Perform benchmark with thread monitor" ) {
 
     DatasetParams params("nyu-mll/glue", "cola", "train");
     params.ms_between_curl = 1000;
-    Logger.write("Getting dataset...");
+    Logger.info("Getting dataset...");
     Dataset dataset = params.get_dataset();
     ColaBenchmark benchmark(std::move(dataset));
 
 
-    Logger.write("Beginning benchmark..");
+    Logger.info("Beginning benchmark..");
     auto ctx = BenchmarkContext<ColaBenchmark>(benchmark, "https://api.openai.com/v1/completions");
 
     // Monitor monitor(ctx);
