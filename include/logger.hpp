@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <thread>
 #include "ring_buffers.hpp"
+#include "latency_metrics.hpp"
 
 enum LogLevel {
     NOTSET,
@@ -21,7 +22,9 @@ public:
 
     ~AsyncLogger();
 
-    void write(const char* message);
+    void write(std::string message);
+
+    static thread_local std::vector<time_point> time_starts;
 
 private:
     MPSCRingBuffer<std::string> messages;
@@ -42,7 +45,10 @@ struct LoggingContext {
 
     ~LoggingContext() = default;
 
-    void write(const char* message);
+    void write(std::string message);
+
+    size_t set_start();
+    void set_stop_and_display_time(size_t id, const char* name);
 };
 
 

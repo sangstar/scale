@@ -8,8 +8,8 @@ std::vector<json> RequestResult::to_json() {
     std::vector<json> json_vec;
     for (auto& compl_result: completion_results) {
         json j;
-        j["e2e_latency"] = latencies.end_to_end_latency.count();
-        j["ttft"] = latencies.ttft.count();
+        j["e2e_latency"] = latencies.end_to_end_latency;
+        j["ttft"] = latencies.ttft;
         j["id"] = compl_result.id;
         j["model"] = compl_result.model;
         j["object"] = compl_result.object;

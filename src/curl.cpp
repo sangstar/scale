@@ -19,13 +19,11 @@ size_t write_cb_default(void* contents, size_t size, size_t nmemb, void* userp) 
 }
 
 size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp) {
+    auto idx = Logger.set_start();
     auto as_streaming_resp = (StreamingResponse *) userp;
     auto content = std::string((char *) contents, size * nmemb);
-    if (!as_streaming_resp->got_ttft) {
-        auto got_token_time = std::chrono::high_resolution_clock::now();
-        as_streaming_resp->latencies.ttft = got_token_time - as_streaming_resp->start;
-    }
     push_chunks(as_streaming_resp, std::move(content));
+    Logger.set_stop_and_display_time(idx, "write_cb_to_queue");
     return size * nmemb;
 }
 
@@ -73,6 +71,7 @@ std::shared_ptr<StreamingResponse> CURLHandler::post_stream(RequestParameters& r
     std::thread t(
         [post_data, resp, this] {
             CURL* ephemeral = curl_easy_init();
+            double namelookup_time, connect_time, starttransfer_time, total_time;
             curl_easy_setopt(ephemeral, CURLOPT_URL, this->uri.c_str());
             curl_easy_setopt(ephemeral, CURLOPT_HTTPHEADER, headers);
             curl_easy_setopt(ephemeral, CURLOPT_POST, 1L);
@@ -80,7 +79,16 @@ std::shared_ptr<StreamingResponse> CURLHandler::post_stream(RequestParameters& r
             curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDSIZE, post_data->size());
             curl_easy_setopt(ephemeral, CURLOPT_WRITEFUNCTION, write_cb_to_queue);
             curl_easy_setopt(ephemeral, CURLOPT_WRITEDATA, resp.get());
+            auto idx = Logger.set_start();
+            resp->start = std::chrono::high_resolution_clock::now();
             auto res = curl_easy_perform(ephemeral);
+            curl_easy_getinfo(ephemeral, CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
+            curl_easy_getinfo(ephemeral, CURLINFO_CONNECT_TIME, &connect_time);
+            curl_easy_getinfo(ephemeral, CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
+            curl_easy_getinfo(ephemeral, CURLINFO_TOTAL_TIME, &total_time);
+            resp->latencies.ttft = starttransfer_time;
+            resp->latencies.end_to_end_latency = total_time;
+            Logger.set_stop_and_display_time(idx, "e2e from server");
             if (res != CURLE_OK) {
                 // TODO: C-style error here is weird
                 fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
@@ -183,12 +191,11 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
             // TODO: Need to seriously consider some timer abstraction to ensure
             //       processing stuff isn't significantly inflating the actual latency.
             //       At very least must heavily profile
-            streamed->latencies.end_to_end_latency = std::chrono::high_resolution_clock::now() - streamed->start;
             done = true;
             continue;
         }
-
-        Logger.write(std::format("Got chunk: {}", chunk.data()).c_str());
+        auto msg = std::format("Got chunk: {}", chunk);
+        Logger.write(msg.c_str());
         // This is illegal if the above condition is false
         if (chunk.back() != '}') {
             throw std::runtime_error("chunking error");

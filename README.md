@@ -16,6 +16,6 @@ like:
   or stdout
 
 Generally very fast, mostly bottlenecked by network-bound I/O. Able to 
-send, receive, and process around 100 requests per second from the official
-OpenAI REST API.
+send, receive, and process over 100 requests per second from the official
+OpenAI REST API, making the client bottleneck negligible when benchmarking.
 

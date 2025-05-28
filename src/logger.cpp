@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+thread_local std::vector<time_point> AsyncLogger::time_starts;
 
 AsyncLogger::AsyncLogger(const std::string& filename) : done(false) {
     if (filename == "stdout") {
@@ -34,9 +35,8 @@ AsyncLogger::~AsyncLogger() { {
     }
 }
 
-void AsyncLogger::write(const char* message) {
-    auto as_str = std::string(message);
-    messages.push(as_str);
+void AsyncLogger::write(std::string message) {
+    messages.push(std::move(message));
 
     // Multiple producers (possible log writers), so ready_to_read can risk data races,
     // which is why it's atomic here
@@ -44,12 +44,33 @@ void AsyncLogger::write(const char* message) {
     cv.notify_one();
 }
 
+size_t LoggingContext::set_start() {
+    if (DEBUG) {
+        if (logger.time_starts.size() > 10000) {
+            logger.time_starts.clear();
+            logger.time_starts.shrink_to_fit();
+        }
+        auto time_start = std::chrono::high_resolution_clock::now();
+        logger.time_starts.emplace_back(time_start);
+        return logger.time_starts.size() - 1;
+    }
+}
+
+void LoggingContext::set_stop_and_display_time(size_t idx, const char* name) {
+    if (DEBUG) {
+        auto end_minus_start = std::chrono::high_resolution_clock::now() - logger.time_starts[idx];
+        auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(end_minus_start).count();
+        auto msg = std::format("{} took {} s", name, duration);
+        write(msg.c_str());
+    }
+}
+
 LoggingContext::LoggingContext(const std::string& filename, LogLevel level) : logger(filename), level(level) {
 }
 
-void LoggingContext::write(const char* message) {
+void LoggingContext::write(std::string message) {
     if (level == DEBUG) {
-        logger.write(message);
+        logger.write(std::move(message));
     }
 };
 
@@ -60,10 +81,12 @@ void AsyncLogger::display_loop() {
         if (done) {
             break;
         }
-        std::string* to_display;
-        auto state = messages.fetch(to_display);
-        if (state == SUCCESS) {
-            auto to_write = std::format("DEBUG: {}\n", *to_display);
+        auto to_display = messages.fetch();
+        if (to_display.state == SUCCESS) {
+            if (to_display.content.empty()) {
+                throw std::runtime_error("Fail");
+            }
+            auto to_write = std::format("DEBUG: {}\n", to_display.content);
             ::write(fd, to_write.c_str(), to_write.size());
         }
     }

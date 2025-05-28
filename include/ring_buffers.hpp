@@ -8,8 +8,14 @@
 #include <string>
 #include <array>
 
-constexpr int RequestRingBufferMaxSize = 1000;
+constexpr int RequestRingBufferMaxSize = 10'000;
 constexpr int ResultsRingBufferMaxSize = 1'000'000;
+
+// The indices for the single consumers here are not atomic
+// which is slightly hazardous, since more than one thread reads
+// from it (producer and consumer, even if one of them is
+// single-threaded), but is done so greedily, relying on a large
+// max buffer size to prevent overwrites
 
 enum RingState {
     FULL,
@@ -21,7 +27,7 @@ enum RingState {
 template<typename T>
 struct RingResult {
     RingState state;
-    T* content;
+    T content;
 };
 
 template<typename T>
@@ -89,7 +95,13 @@ struct MPSCRingBuffer {
 
     RingState push(T content);
 
+    // Writes the fetched data to `item`
+    // performant but if `item` is fetched again before
+    // it's used, this can cause races and invalid data
     RingState fetch(T*& item);
+
+    // Returns a copy of the fetched value -- safer
+    RingResult<T> fetch();
 };
 
 
@@ -122,10 +134,24 @@ RingState MPSCRingBuffer<T>::fetch(T*& item) {
         return EMPTY;
     }
     if (data[idx].ready.load(std::memory_order_acquire)) {
-        tail++;
         item = &data[idx].content;
+        tail++;
         return SUCCESS;
     }
     item = nullptr;
     return NOT_READY;
+}
+
+template<typename T>
+RingResult<T> MPSCRingBuffer<T>::fetch() {
+    auto idx = tail % data.size();
+    if (tail == head.load(std::memory_order_acquire)) {
+        return RingResult<T>{EMPTY, {}};
+    }
+    if (data[idx].ready.load(std::memory_order_acquire)) {
+        T immediately_copied = data[idx].content;
+        tail++;
+        return RingResult<T>{SUCCESS, std::move(immediately_copied)};
+    }
+    return RingResult<T>{NOT_READY, {}};
 }

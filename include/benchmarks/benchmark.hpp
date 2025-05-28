@@ -39,8 +39,8 @@ std::vector<json> get_output_json(const RequestResult& res, const B& bench) {
     auto logprobs_for_yes_and_no = get_yes_no_logprobs(state, correct, res);
     for (const auto& compl_result: res.completion_results) {
         json j = json::object();
-        j["e2e_latency"] = res.latencies.end_to_end_latency.count();
-        j["ttft"] = res.latencies.ttft.count();
+        j["e2e_latency"] = res.latencies.end_to_end_latency;
+        j["ttft"] = res.latencies.ttft;
         j["id"] = compl_result.id;
         j["model"] = compl_result.model;
         j["object"] = compl_result.object;
@@ -76,6 +76,20 @@ struct BenchmarkContext {
         results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
     }
 
+    // perform_benchmark does the following:
+    // 1. Creates a FinalMetrics object to write results to
+    // 2. Creates a writing thread that captures the metrics and
+    //    self by pointer, and does `consume_buffer_and_write_to_json`,
+    //    which looks for `this`'s `results_buffer` entries from the producer
+    //    threads and writes the results to jsonl
+    // 3. Creates `NumConcurrentRequests` workers that get a unique row index
+    //    to grab from the dataset, marshal it in to a request, and send a request to
+    //    the server, returning a shared pointer that exposes the underlying streaming response.
+    //    One thread is responsible for pushing parsed responses to a buffer and
+    //    NumWorkersPerRequest threads are spawned that consume responses, parse and collate
+    //    them.
+    // 4. When a `send_and_add_to_buffer` worker is finished, it finally pushes the result to
+    //    the writing thread from step 2 which writes it to jsonl
     void perform_benchmark(const char* filename_jsonl, LoggingContext* maybe_logger) {
         FinalMetrics metrics;
         metrics.output_jsonl = filename_jsonl;
@@ -155,17 +169,19 @@ struct BenchmarkContext {
         results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
     }
 
+    // send_and_add_to_buffer creates a shared pointer to a `CompletionResults` buffer,
+    // sends the request to the server and parses the response with `post_stream`,
+    // and defines a closure to be performed by NumWorkersPerRequest. `post_stream` spawns a
+    // worker that receives responses from the server, parses them in to valid JSON chunks, and
+    // pushes them to a shared_ptr to a `StreamingResponse` object that is returned by `post_stream`.
+
+    // Consumer workers are spawned, each holding a reference to the shared_ptr where the parsed JSON
+    // data is written to, fetch a JSON chunk atomically, process it, and push it to the `CompletionResults` buffer.
     void send_and_add_to_buffer(RequestParameters& req) {
         auto res = std::make_shared<std::vector<CompletionResults>>();
         const auto resp = this->shared_client->post_stream(req);
         std::mutex res_mutex;
 
-        // post_stream creates a writing thread and starts writing to an unordered_map
-        // at key `id`.
-
-        // reader threads are spawned, and perform this closure.
-        // they are given the `id` the writer is writing to, fetch it,
-        // and do work on it.
         int max_retries = 2;
         auto closure = [this, &resp, res, &res_mutex, max_retries] {
             int retries = 0;
@@ -219,7 +235,8 @@ struct BenchmarkContext {
         if (res->size() > 0) {
             RequestResult result;
 
-            // res doesn't need to be shared anymore, so dereference off
+            // res doesn't need to be shared anymore since no one is reading
+            // or writing to it (no more surprises), so dereference off
             // the shared_ptr safeguard and move the result for the caller
             // to own it.
             result.completion_results = std::move(*res);
@@ -228,6 +245,9 @@ struct BenchmarkContext {
 
             results_buffer->push(result);
         } else {
+
+            // If the worker found no work to be processed from the stream buffer, just make a note of
+            // that and finish.
             Logger.write("Worker found no jobs from request buffer.");
         }
     }

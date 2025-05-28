@@ -2,12 +2,12 @@
 // Created by Sanger Steel on 5/23/25.
 //
 
-#include "dataset.hpp"
+#include "benchmarks/dataset.hpp"
 
-#include <logger.hpp>
+#include "logger.hpp"
 
 #include "curl.hpp"
-#include "constants.hpp"
+#include "benchmarks/constants.hpp"
 
 bool Dataset::add_rows(std::string& uri) {
     auto resp = CURLHandler::get(uri.c_str());
@@ -54,5 +54,6 @@ Dataset DatasetParams::get_dataset() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(ms_between_curl));
     }
+    Logger.write(std::format("Got {} rows.", dataset.rows.size()));
     return std::move(dataset);
 }

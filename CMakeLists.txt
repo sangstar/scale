@@ -21,7 +21,7 @@ add_library(scale_core
         src/benchmarks/cola.cpp
         src/benchmarks/utils.cpp
         src/result_types.cpp
-        include/benchmarks/dataset.cpp
+        src/benchmarks/dataset.cpp
 )
 
 # Add include paths

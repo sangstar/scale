@@ -8,7 +8,7 @@
 using time_point = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
 struct LatencyMetrics {
-    std::chrono::duration<double, std::milli> ttft;
-    std::chrono::duration<double, std::milli> end_to_end_latency;
+    double ttft;
+    double end_to_end_latency;
 };
 
