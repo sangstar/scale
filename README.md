@@ -15,9 +15,8 @@ like:
   latency and evaluation metrics and writes the results to a file
   or stdout
 
-Generally very fast, mostly bottlenecked by network-bound I/O. Able to 
-send, receive, and process over 100 requests per second from the official
-OpenAI REST API, making the client bottleneck negligible when benchmarking.
+Generally very fast, mostly bottlenecked by network-bound I/O, allowing for 
+client overhead to not muddy benchmark results even at high request concurrency.
 
 ## Usage example:
 The arguments to pass to `scale` are:
