@@ -11,12 +11,6 @@
 constexpr int RequestRingBufferMaxSize = 10'000;
 constexpr int ResultsRingBufferMaxSize = 1'000'000;
 
-// The indices for the single consumers here are not atomic
-// which is slightly hazardous, since more than one thread reads
-// from it (producer and consumer, even if one of them is
-// single-threaded), but is done so greedily, relying on a large
-// max buffer size to prevent overwrites
-
 enum RingState {
     FULL,
     EMPTY,
@@ -38,9 +32,9 @@ struct Slot {
 
 template <typename T>
 struct SPMCRingBuffer {
-    int head;
-    std::atomic<int> tail;
-    bool producer_finished;
+    std::atomic<size_t> head;
+    std::atomic<size_t> tail;
+    bool producer_finished = false;
     ~SPMCRingBuffer() = default;
 
     SPMCRingBuffer() = default;
@@ -48,19 +42,18 @@ struct SPMCRingBuffer {
     std::array<Slot<std::string>, RequestRingBufferMaxSize> data;
 
     RingState push(T content) {
-        {
             // Single producer
-            auto idx = head % data.size();
-            auto next_head = head + 1;
+            auto polled_head = head.load(std::memory_order_relaxed);
+            auto idx = polled_head % data.size();
+            auto next_head = polled_head + 1;
             if (next_head == tail.load(std::memory_order_acquire)) {
                 // Full
                 return FULL;
             }
             data[idx].content = std::move(content);
             data[idx].ready.store(true, std::memory_order_release);
-            head++;
+            head.store(next_head, std::memory_order_relaxed);
             return SUCCESS;
-        }
     }
 
     RingState fetch(T*& item) {
@@ -84,8 +77,8 @@ struct SPMCRingBuffer {
 
 template<typename T>
 struct MPSCRingBuffer {
-    std::atomic<int> head;
-    int tail;
+    std::atomic<size_t> head;
+    std::atomic<size_t> tail;
 
     ~MPSCRingBuffer() = default;
 
@@ -128,14 +121,15 @@ RingState MPSCRingBuffer<T>::push(T content) {
 
 template<typename T>
 RingState MPSCRingBuffer<T>::fetch(T*& item) {
-    auto idx = tail % data.size();
-    if (tail == head.load(std::memory_order_acquire)) {
+    auto polled_tail = tail.load(std::memory_order_relaxed);
+    auto idx = polled_tail % data.size();
+    if (polled_tail == head.load(std::memory_order_acquire)) {
         item = nullptr;
         return EMPTY;
     }
     if (data[idx].ready.load(std::memory_order_acquire)) {
         item = &data[idx].content;
-        tail++;
+        tail.store(polled_tail + 1, std::memory_order_relaxed);
         return SUCCESS;
     }
     item = nullptr;
