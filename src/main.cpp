@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     if (params.config == "mrpc") {
-        results = dispatch_benchmark<ColaBenchmark>(dataset.rows, base_url, outfile);
+        results = dispatch_benchmark<MRPCBenchmark>(dataset.rows, base_url, outfile);
         return 1;
     }
     return 0;
