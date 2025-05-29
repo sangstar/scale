@@ -9,6 +9,7 @@
 #include "curl.hpp"
 #include "benchmarks/constants.hpp"
 
+
 bool Dataset::add_rows(std::string& uri) {
     auto resp = CURLHandler::get(uri.c_str());
     if (str_contains(resp, BenchmarkingConstants::rate_limit_text.data())) {
@@ -23,18 +24,19 @@ bool Dataset::add_rows(std::string& uri) {
     catch (const json::parse_error& e) {
         return true;
     }
-    auto rows_json = as_json["rows"];
-
-    for (const auto& row_json : rows_json) {
-        auto row = row_json["row"];
-        Row new_row {
-            row["idx"],
-            row["label"],
-            row["sentence"],
-        };
-        rows.emplace_back(new_row);
-    }
+    rows.insert(rows.end(), as_json["rows"].begin(), as_json["rows"].end());
     return false;
+}
+
+std::unique_ptr<BenchmarkBase> create_benchmark(DatasetParams& params, Rows& rows) {
+    const auto& config = params.config;
+    if (config == "cola") {
+        return std::make_unique<ColaBenchmark>(ColaBenchmark(std::move(rows)));
+    }
+    if (config == "mrpc") {
+        return std::make_unique<MRPCBenchmark>(MRPCBenchmark(std::move(rows)));
+    }
+    throw std::runtime_error(std::format("No benchmark implementation for: {}", config));
 }
 
 std::string DatasetParams::get_url() {

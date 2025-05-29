@@ -7,7 +7,7 @@
 #include "../include/logger.hpp"
 #include "benchmarks/constants.hpp"
 #include "benchmarks/dataset.hpp"
-#include "benchmarks/cola.hpp"
+#include "benchmarks/supported/cola.hpp"
 
 const std::string filename = "stdout";
 LoggingContext Logger(filename, DEBUG);
@@ -116,12 +116,12 @@ TEST_CASE( "Perform benchmark with thread monitor" ) {
     params.ms_between_curl = 1000;
     Logger.info("Getting dataset...");
     Dataset dataset = params.get_dataset();
-    ColaBenchmark benchmark(std::move(dataset));
+    ColaBenchmark benchmark(dataset.rows);
 
 
     Logger.info("Beginning benchmark..");
     auto ctx = BenchmarkContext<ColaBenchmark>(benchmark, "https://api.openai.com/v1/completions");
 
     // Monitor monitor(ctx);
-    ctx.perform_benchmark("output.jsonl", &Logger);
+    ctx.perform_benchmark("output.jsonl");
 }

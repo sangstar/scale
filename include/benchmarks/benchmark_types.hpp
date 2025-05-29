@@ -7,10 +7,8 @@
 #include <optional>
 #include <iostream>
 
-enum RowDatatypes {
-    STRING,
-    INTEGER,
-};
+
+using Rows = std::vector<json>;
 
 enum AnswerType {
     MultipleChoice,

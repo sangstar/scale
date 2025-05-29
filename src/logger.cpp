@@ -76,7 +76,7 @@ void LoggingContext::debug(std::string message) {
 };
 
 void LoggingContext::info(std::string message) {
-    if (level == INFO) {
+    if (level >= INFO) {
         logger.write(std::format("INFO: {}", std::move(message)));
     }
 };

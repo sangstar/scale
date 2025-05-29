@@ -20,6 +20,12 @@
 
 using json = nlohmann::json;
 
+struct BenchmarkBase {
+    BenchmarkBase(Rows rows_) : rows(std::move(rows_)) {};
+    ~BenchmarkBase() = default;
+    Rows rows;
+};
+
 template<Benchmark B>
 LabelStates get_label_state(const B& bench, const RequestParameters& req) {
     auto label = req.golden_label;
@@ -29,6 +35,16 @@ LabelStates get_label_state(const B& bench, const RequestParameters& req) {
         }
     }
     return NO_LABEL;
+}
+
+
+
+
+template <Benchmark Bench>
+void request_from_dataset_row(Bench& b, int idx, RequestParameters* req) {
+    auto row = b.rows[idx]["row"];
+    req->golden_label = row[b.class_label_feature_name].dump();
+    req->prompt = b.get_prompt(row);
 }
 
 template<Benchmark B>
@@ -103,15 +119,16 @@ struct BenchmarkContext {
         std::atomic<int> job_id = 0;
 
         auto request_worker_closure = [&job_id, this] {
+            RequestParameters req;
             while (true) {
                 auto idx = job_id.fetch_add(1, std::memory_order_acquire);
 
-                if (idx >= this->benchmark.size()) {
+                if (idx >= this->benchmark.rows.size()) {
                     break;
                 }
 
-                auto params = this->benchmark.request_from_dataset_row(idx);
-                send_and_add_to_buffer(params);
+                request_from_dataset_row(this->benchmark, idx, &req);
+                send_and_add_to_buffer(req);
             }
         };
 
@@ -250,6 +267,15 @@ struct BenchmarkContext {
         }
     }
 };
+
+
+template <Benchmark Bench>
+void dispatch_benchmark(Rows& rows, const std::string& base_url, const std::string& outfile) {
+    Bench benchmark(std::move(rows));
+    BenchmarkContext<Bench> ctx(benchmark, base_url.c_str());
+    ctx.perform_benchmark(outfile.c_str());
+}
+
 
 
 

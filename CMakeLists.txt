@@ -18,7 +18,6 @@ add_library(scale_core
         src/curl.cpp
         src/logger.cpp
         src/benchmarks/benchmark.cpp
-        src/benchmarks/cola.cpp
         src/benchmarks/utils.cpp
         src/result_types.cpp
         src/benchmarks/dataset.cpp
@@ -31,7 +30,8 @@ target_include_directories(scale_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 find_package(CURL REQUIRED)
 target_link_libraries(scale_core PRIVATE CURL::libcurl)
 
-add_executable(scale src/main.cpp)
+add_executable(scale src/main.cpp
+        include/benchmarks/supported/mrpc.hpp)
 target_link_libraries(scale PRIVATE scale_core)
 
 add_executable(tests tests/test.cpp)

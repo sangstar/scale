@@ -7,16 +7,18 @@
 #include "../../external/json.hpp"
 #include "../result_types.hpp"
 #include "labels.hpp"
-#include "dataset.hpp"
+#include "benchmark_types.hpp"
 
 using json = nlohmann::json;
 
 
 template<typename T>
-concept Benchmark = requires(T benchmark, int idx)
+concept Benchmark = requires(T benchmark, int idx, json& row)
 {
-    { benchmark.request_from_dataset_row(idx) } -> std::same_as<RequestParameters>;
     { T::pre_formatted_text } -> std::convertible_to<std::string_view>;
-    { benchmark.dataset } -> std::same_as<Dataset&>;
+    { benchmark.rows } -> std::same_as<Rows&>;
     { benchmark.label_map } -> std::convertible_to<LabelStatesMapping *>;
+    { T::prompt_feature_names } -> std::convertible_to<const std::string_view*>;
+    { T::class_label_feature_name } -> std::same_as<const std::string_view&>;
+    { benchmark.get_prompt(row) } -> std::same_as<std::string>;
 };

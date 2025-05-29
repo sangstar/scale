@@ -1,5 +1,6 @@
+#include <benchmarks/dataset.hpp>
+
 #include "benchmarks/benchmark.hpp"
-#include "benchmarks/cola.hpp"
 #include "curl.hpp"
 #include "logger.hpp"
 
@@ -81,12 +82,14 @@ int main(int argc, char* argv[]) {
     DatasetParams params(id.c_str(), config.c_str(), split.c_str());
     params.ms_between_curl = req_rate_as_int;
     Dataset dataset = params.get_dataset();
-    ColaBenchmark benchmark(std::move(dataset));
 
-
-    Logger.info("Beginning benchmark..");
-    auto ctx = BenchmarkContext<ColaBenchmark>(benchmark, base_url.c_str());
-
-    ctx.perform_benchmark(outfile.c_str());
-    return 1;
+    if (params.config == "cola") {
+        dispatch_benchmark<ColaBenchmark>(dataset.rows, base_url, outfile);
+        return 1;
+    }
+    if (params.config == "mrpc") {
+        dispatch_benchmark<MRPCBenchmark>(dataset.rows, base_url, outfile);
+        return 1;
+    }
+    return 0;
 }

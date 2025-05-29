@@ -5,19 +5,14 @@
 #pragma once
 #include <string>
 #include <vector>
+#include "../../external/json.hpp"
+#include "benchmark.hpp"
+#include "supported/cola.hpp"
+#include "supported/mrpc.hpp"
 
-struct Row {
-    int idx{};
-    int label;
-    std::string sentence;
-};
+using json = nlohmann::json;
 
-struct Dataset {
-    std::vector<Row> rows;
-    bool add_rows(std::string& uri);
-};
-
-
+struct Dataset;
 
 class DatasetParams {
 public:
@@ -42,3 +37,11 @@ public:
 private:
     int offset = 0;
 };
+
+struct Dataset {
+    Dataset() = default;
+    Rows rows;
+    bool add_rows(std::string& uri);
+};
+
+std::unique_ptr<BenchmarkBase> create_benchmark(DatasetParams& params, Rows& rows);
