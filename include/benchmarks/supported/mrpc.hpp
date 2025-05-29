@@ -2,10 +2,6 @@
 // Created by Sanger Steel on 5/28/25.
 //
 
-//
-// Created by Sanger Steel on 5/6/25.
-//
-
 #pragma once
 #include "../benchmark.hpp"
 
