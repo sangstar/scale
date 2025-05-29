@@ -20,5 +20,5 @@ struct YesNoLogprobPair {
 };
 
 bool guessed_correctly(LabelStates state, const RequestResult& res);
-void report_results(FinalMetrics& metrics);
+FinalMetrics get_results(Metrics& metrics);
 YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const RequestResult& res);

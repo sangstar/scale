@@ -24,3 +24,12 @@ std::vector<json> RequestResult::to_json() {
     }
     return std::move(json_vec);
 }
+
+std::string FinalMetrics::display() {
+   return std::format("{} requests processed in {:3f}s, {:.3f} reqs/sec"
+                            " | Average TTFT: {:.3f}s"
+                            " | Average End-to-End Latency: {:.3f}s"
+                            " | Accuracy: {:.2f}%", requests_processed,
+                            duration, req_rate,
+                            avg_ttft, avg_e2e_latency, accuracy);
+}

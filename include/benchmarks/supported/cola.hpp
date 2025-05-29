@@ -28,8 +28,8 @@ public:
 
 inline std::string ColaBenchmark::get_prompt(json& row) {
     auto& sentence_str = prompt_feature_names[0];
-    auto substituted = row[sentence_str];
-    return std::format(pre_formatted_text, static_cast<std::string>(substituted));
+    auto& substituted = row[sentence_str];
+    return std::format(pre_formatted_text, substituted.dump());
 }
 
 

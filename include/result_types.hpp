@@ -48,10 +48,20 @@ struct ParsedRequestResult {
     }
 };
 
-struct FinalMetrics {
+struct Metrics {
     const char* output_jsonl;
     time_point benchmark_start;
     time_point benchmark_end;
-    int requests_processed;
+    double requests_processed;
     std::vector<RequestResult> req_results;
+};
+
+struct FinalMetrics {
+    double avg_ttft;
+    double avg_e2e_latency;
+    double requests_processed;
+    double duration;
+    double req_rate;
+    double accuracy;
+    std::string display();
 };

@@ -84,7 +84,7 @@ bool guessed_correctly(LabelStates state, const RequestResult& res) {
     }
 }
 
-void report_results(FinalMetrics& metrics) {
+FinalMetrics get_results(Metrics& metrics) {
     auto benchmark_duration = metrics.benchmark_end - metrics.benchmark_start;
     auto seconds = duration_cast<std::chrono::duration<double>>(benchmark_duration).count();
     double ttft_sum = 0;
@@ -97,16 +97,20 @@ void report_results(FinalMetrics& metrics) {
             guessed_correct++;
         }
     }
+    FinalMetrics fm{};
     auto avg_ttft = ttft_sum / metrics.requests_processed;
     auto avg_e2e_latency = e2e_latency_sum / metrics.requests_processed;
     auto accuracy = guessed_correct / metrics.requests_processed * 100;
+    fm.avg_ttft = avg_ttft;
+    fm.avg_e2e_latency = avg_e2e_latency;
+    fm.duration = seconds;
+    fm.requests_processed = metrics.requests_processed;
+    fm.req_rate = metrics.requests_processed / seconds;
+    fm.accuracy = accuracy;
 
-    Logger.info(std::format("{} requests processed in {:3f}s, {:.3f} reqs/sec"
-                            " | Average TTFT: {:.3f}s"
-                            " | Average End-to-End Latency: {:.3f}s"
-                            " | Accuracy: {:.2f}%", metrics.requests_processed,
-                            seconds, metrics.requests_processed / seconds,
-                            avg_ttft, avg_e2e_latency, accuracy));
+
+    Logger.info(fm.display());
+    return fm;
 }
 
 YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const RequestResult& res) {

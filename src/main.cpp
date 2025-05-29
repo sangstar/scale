@@ -83,12 +83,13 @@ int main(int argc, char* argv[]) {
     params.ms_between_curl = req_rate_as_int;
     Dataset dataset = params.get_dataset();
 
+    FinalMetrics results;
     if (params.config == "cola") {
-        dispatch_benchmark<ColaBenchmark>(dataset.rows, base_url, outfile);
+        results = dispatch_benchmark<ColaBenchmark>(dataset.rows, base_url, outfile);
         return 1;
     }
     if (params.config == "mrpc") {
-        dispatch_benchmark<MRPCBenchmark>(dataset.rows, base_url, outfile);
+        results = dispatch_benchmark<ColaBenchmark>(dataset.rows, base_url, outfile);
         return 1;
     }
     return 0;

@@ -105,8 +105,8 @@ struct BenchmarkContext {
     //    them.
     // 4. When a `send_and_add_to_buffer` worker is finished, it finally pushes the result to
     //    the writing thread from step 2 which writes it to jsonl
-    void perform_benchmark(const char* filename_jsonl) {
-        FinalMetrics metrics;
+    FinalMetrics perform_benchmark(const char* filename_jsonl) {
+        Metrics metrics;
         metrics.output_jsonl = filename_jsonl;
         metrics.requests_processed = 0;
         metrics.benchmark_start = std::chrono::high_resolution_clock::now();
@@ -143,9 +143,11 @@ struct BenchmarkContext {
         finished = true;
 
         writer.join();
+        auto final_metrics = get_results(metrics);
+        return final_metrics;
     }
 
-    void consume_buffer_and_write_to_json(FinalMetrics& metrics) const {
+    void consume_buffer_and_write_to_json(Metrics& metrics) const {
         std::ofstream outfile(metrics.output_jsonl);
 
         if (!outfile.is_open()) {
@@ -174,7 +176,6 @@ struct BenchmarkContext {
             }
         }
         metrics.benchmark_end = std::chrono::high_resolution_clock::now();
-        report_results(metrics);
         outfile.close();
     }
 
@@ -270,10 +271,10 @@ struct BenchmarkContext {
 
 
 template <Benchmark Bench>
-void dispatch_benchmark(Rows& rows, const std::string& base_url, const std::string& outfile) {
+FinalMetrics dispatch_benchmark(Rows& rows, const std::string& base_url, const std::string& outfile) {
     Bench benchmark(std::move(rows));
     BenchmarkContext<Bench> ctx(benchmark, base_url.c_str());
-    ctx.perform_benchmark(outfile.c_str());
+    return ctx.perform_benchmark(outfile.c_str());
 }
 
 
