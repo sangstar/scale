@@ -50,9 +50,10 @@ struct ParsedRequestResult {
 
 struct Metrics {
     const char* output_jsonl;
-    time_point benchmark_start;
+    explicit Metrics(const char* jsonl) : output_jsonl(jsonl) {};
+    time_point benchmark_start = std::chrono::high_resolution_clock::now();
     time_point benchmark_end;
-    double requests_processed;
+    double requests_processed = 0;
     std::vector<RequestResult> req_results;
 };
 

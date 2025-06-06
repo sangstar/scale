@@ -3,7 +3,6 @@
 //
 
 #include "curl.hpp"
-#include "benchmarks/benchmark.hpp"
 #include <thread>
 #include <random>
 #include "logger.hpp"

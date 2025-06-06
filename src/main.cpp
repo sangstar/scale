@@ -1,6 +1,9 @@
-#include <benchmarks/dataset.hpp>
+//
+// Created by Sanger Steel on 6/6/25.
+//
+#include "dataset.hpp"
 
-#include "benchmarks/benchmark.hpp"
+#include "benchmark_types.hpp"
 #include "curl.hpp"
 #include "logger.hpp"
 
@@ -80,17 +83,30 @@ int main(int argc, char* argv[]) {
     Logger.info("Fetching data..");
 
     DatasetParams params(id.c_str(), config.c_str(), split.c_str());
-    params.ms_between_curl = req_rate_as_int;
-    Dataset dataset = params.get_dataset();
+    params.ms_between_curl = 1000;
+    Dataset Cola(params);
+    Cola.class_label_feature_name = "label";
+    Cola.pre_formatted_text = "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
+    Cola.map = LabelStatesMapping{
+                {"-1", NO_LABEL},
+                {"0", NO},
+                {"1", YES},
+            };
 
-    FinalMetrics results;
-    if (params.config == "cola") {
-        results = dispatch_benchmark<ColaBenchmark>(dataset.rows, base_url, outfile);
-        return 1;
-    }
-    if (params.config == "mrpc") {
-        results = dispatch_benchmark<MRPCBenchmark>(dataset.rows, base_url, outfile);
-        return 1;
-    }
+    auto shared_client = std::make_shared<CURLHandler>("https://api.openai.com/v1/completions", std::getenv("OPENAI_API_KEY"));
+
+    DatasetToRequestStrategy dataset_processor(Cola);
+
+    FileWritingStrategy writer;
+    RequestSenderAndParserStrategy sender_and_parser;
+
+    ProcessingStrategy processor {
+        dataset_processor,
+        sender_and_parser,
+        writer,
+        shared_client
+    };
+
+    auto result = processor.process_benchmark("output_new.jsonl");
     return 0;
 }

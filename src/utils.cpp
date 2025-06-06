@@ -2,7 +2,7 @@
 // Created by Sanger Steel on 5/23/25.
 //
 
-#include "benchmarks/utils.hpp"
+#include "utils.hpp"
 #include <iostream>
 
 
@@ -150,4 +150,35 @@ YesNoLogprobPair get_yes_no_logprobs(LabelStates state, bool correct, const Requ
         }
     }
     return std::move(pair);
+}
+
+std::vector<json> get_output_json(const RequestResult& res, const Dataset& dataset) {
+    std::vector<json> json_vec;
+    auto state = get_label_state(dataset, res.params);
+    auto logprobs_for_yes_and_no = get_yes_no_logprobs(state, res.guessed_correctly, res);
+    for (const auto& compl_result: res.completion_results) {
+        json j = json::object();
+        j["e2e_latency"] = res.latencies.end_to_end_latency;
+        j["ttft"] = res.latencies.ttft;
+        j["id"] = compl_result.id;
+        j["model"] = compl_result.model;
+        j["object"] = compl_result.object;
+        j["prompt"] = res.params.prompt;
+        j["guessed_correctly"] = res.guessed_correctly;
+        if (logprobs_for_yes_and_no.yes.has_value()) {
+            j["yes_logprob"] = logprobs_for_yes_and_no.yes.value().dump();
+        } else {
+            j["yes_logprob"] = "N/A";
+        }
+        if (logprobs_for_yes_and_no.no.has_value()) {
+            j["no_logprob"] = logprobs_for_yes_and_no.no.value().dump();
+        } else {
+            j["no_logprob"] = "N/A";
+        }
+        auto choice = compl_result.choices[0];
+        j["finish_reason"] = choice.finish_reason;
+        j["text"] = choice.text;
+        json_vec.emplace_back(j);
+    }
+    return std::move(json_vec);
 }

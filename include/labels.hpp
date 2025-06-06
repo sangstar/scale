@@ -11,7 +11,7 @@ enum LabelStates {
     NO,
 };
 
-using LabelStatesMapping = const std::pair<std::string_view, LabelStates>;
+using LabelStatesMapping = std::vector<std::pair<std::string_view, LabelStates>>;
 
 // Increase the magic number of 3 here as needed, and just add the extra ones manually
 struct Label {

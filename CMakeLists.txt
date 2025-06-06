@@ -15,13 +15,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_library(scale_core
+        src/benchmark_types.cpp
         src/curl.cpp
+        src/dataset.cpp
         src/logger.cpp
-        src/benchmarks/benchmark.cpp
-        src/benchmarks/utils.cpp
         src/result_types.cpp
-        src/benchmarks/dataset.cpp
+        src/utils.cpp
 )
+
 
 # Add include paths
 target_include_directories(scale_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -30,12 +31,12 @@ target_include_directories(scale_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 find_package(CURL REQUIRED)
 target_link_libraries(scale_core PRIVATE CURL::libcurl)
 
-add_executable(scale src/main.cpp
-        include/benchmarks/supported/mrpc.hpp)
+add_executable(scale src/main.cpp)
 target_link_libraries(scale PRIVATE scale_core)
 
 add_executable(tests tests/test.cpp)
 target_link_libraries(tests PRIVATE Catch2::Catch2WithMain scale_core)
+target_link_libraries(tests PRIVATE CURL::libcurl)
 
 
 target_include_directories(scale PUBLIC "${PROJECT_SOURCE_DIR}/include")
