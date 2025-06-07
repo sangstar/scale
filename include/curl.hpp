@@ -36,9 +36,9 @@ public:
 
     LatencyMetrics await(std::shared_ptr<StreamingResponse> resp);
 
-    RingState fetch(std::shared_ptr<StreamingResponse> resp, std::string*& to_write_to);
+    RingState fetch(const std::shared_ptr<StreamingResponse>& resp, std::string*& to_write_to);
 
-    bool write_to_buffer_finished(std::shared_ptr<StreamingResponse>);
+    bool write_to_buffer_finished(const std::shared_ptr<StreamingResponse>&);
 
 private:
     std::string api_key;

@@ -8,9 +8,29 @@
 
 #include "utils.hpp"
 
+std::string debug_json(json& j) {
+    return j.dump(2);
+}
+
 std::string DatasetParams::get_url() {
     return std::format(BenchmarkingConstants::format_string,
                        id, config, split, offset);
+}
+
+Data DatasetParams::get_data() {
+    Data data;
+    bool is_finished = false;
+    while (!is_finished) {
+        auto url = get_url();
+        offset+=rows_per_query;
+        is_finished = data.add_rows(url);
+        if (data.rows.size() >= max_rows) {
+            is_finished = true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(ms_between_curl));
+    }
+    Logger.info(std::format("Got {} rows.", data.rows.size()));
+    return std::move(data);
 }
 
 LabelStates get_label_state(const Dataset& dataset, const RequestParameters& req) {
@@ -24,14 +44,14 @@ LabelStates get_label_state(const Dataset& dataset, const RequestParameters& req
 }
 
 void get_request_and_send_loop(
-    Dataset& dataset,
-    RequestSenderAndParserStrategy& sender_and_parser,
+    const Dataset& dataset,
+    RequestTransportStrategy& sender_and_parser,
     DatasetToRequestStrategy& data_processor,
     std::shared_ptr<CURLHandler> shared_client
     ) {
     RequestParameters req;
     while (true) {
-        auto idx = sender_and_parser.job_id.fetch_add(1, std::memory_order_acquire);
+        auto idx = sender_and_parser.fetch_and_add_job_id();
 
         if (idx >= data_processor.dataset_size()) {
             break;
@@ -56,6 +76,11 @@ bool Data::add_rows(std::string& uri) {
     catch (const json::parse_error& e) {
         return true;
     }
+    auto& rows_feature = as_json["rows"];
+    if (!rows_feature.is_array()) {
+        Logger.error(std::format("Expected 'rows' to be an array, got: {}", rows_feature.dump(2)));
+        return false;
+    }
     rows.insert(rows.end(), as_json["rows"].begin(), as_json["rows"].end());
     return false;
 }
@@ -66,27 +91,34 @@ size_t DatasetToRequestStrategy::dataset_size() {
 
 std::string DatasetToRequestStrategy::get_prompt_from_row(json& row) {
     auto& sentence_str = this->dataset.prompt_feature_names_array[0];
-    auto& substituted = row[sentence_str];
-    auto substitued_as_str = substituted.dump();
-    return std::vformat(dataset.pre_formatted_text, std::make_format_args(substitued_as_str));
+    Logger.debug("Row: {}", debug_json(row));
+    auto substituted = row[sentence_str].get<std::string>();
+    Logger.debug("Got prompt from row: {}", substituted);
+    return std::vformat(dataset.pre_formatted_text, std::make_format_args(substituted));
 }
 
-RequestParameters DatasetToRequestStrategy::fill_req_from_row(Dataset& dataset, int row_idx, RequestParameters& req) {
+RequestParameters DatasetToRequestStrategy::fill_req_from_row(const Dataset& dataset, int row_idx, RequestParameters& req) {
     auto row = dataset.data.rows[row_idx]["row"];
     req.golden_label = row[dataset.class_label_feature_name].dump();
     req.prompt = this->get_prompt_from_row(row);
     return req;
 }
 
-void RequestSenderAndParserStrategy::fetch_response_and_add_to_results_buffer(
+void fetch_response_and_add_to_results_buffer(
     const RequestProcessingParameters& params,
     const std::shared_ptr<CURLHandler>& shared_client
     )
 {
-    std::mutex mu;
+    std::mutex compl_buffer_mutex;
     int retries = 0;
     std::string* json_str;
     while (true) {
+        {
+            std::unique_lock<std::mutex> lock(params.resp->mu);
+            params.resp->cv.wait(lock, [&params] {
+                return params.resp->ready_to_fetch();
+            });
+        }
         bool producer_finished = shared_client->write_to_buffer_finished(params.resp);
         auto state = shared_client->fetch(params.resp, json_str);
         if (state == SUCCESS) {
@@ -109,7 +141,7 @@ void RequestSenderAndParserStrategy::fetch_response_and_add_to_results_buffer(
             }
             // TODO: Make this atomic
             if (fine_to_add) {
-                std::lock_guard<std::mutex> lock(mu);
+                std::lock_guard<std::mutex> lock(compl_buffer_mutex);
                 params.compl_result_buffer->emplace_back(std::move(results));
             }
         } else if (state == EMPTY && producer_finished) {
@@ -118,14 +150,12 @@ void RequestSenderAndParserStrategy::fetch_response_and_add_to_results_buffer(
             }
             retries++;
         }
-        // TODO: Don't use spinlocking
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 
 
-void RequestSenderAndParserStrategy::send_and_add_to_buffer(
-    Dataset& bench,
+void RequestTransportStrategy::send_and_add_to_buffer(
+    const Dataset& bench,
     RequestParameters& req,
     std::shared_ptr<CURLHandler>& shared_client
     ) {
@@ -142,7 +172,7 @@ void RequestSenderAndParserStrategy::send_and_add_to_buffer(
     std::vector<std::thread> workers;
     for (int i = 0; i < WorkerConstants::NumWorkersPerRequest; ++i) {
         std::thread t([this, &params, shared_client]() {
-            this->fetch_response_and_add_to_results_buffer(params, shared_client);
+            fetch_response_and_add_to_results_buffer(params, shared_client);
         });
         workers.emplace_back(std::move(t));
     }
@@ -220,7 +250,7 @@ FinalMetrics ProcessingStrategy::process_benchmark(const char* filename_jsonl) {
         this->writer.write_to_jsonl_from_results_buffer(
             metrics,
             this->sender_and_parser.request_results_buffer,
-            this->dataset_processor.dataset
+            this->dataset_processor.get_dataset()
             );
     });
 
@@ -228,7 +258,7 @@ FinalMetrics ProcessingStrategy::process_benchmark(const char* filename_jsonl) {
     for (int i = 0; i < WorkerConstants::NumConcurrentRequests; ++i) {
         std::thread t([this]() {
             get_request_and_send_loop(
-                this->dataset_processor.dataset,
+                this->dataset_processor.get_dataset(),
                 this->sender_and_parser,
                 this->dataset_processor,
                 this->shared_client
@@ -240,7 +270,7 @@ FinalMetrics ProcessingStrategy::process_benchmark(const char* filename_jsonl) {
         workers[i].join();
     }
 
-    this->writer.can_finish = true;
+    this->writer.finalize();
     writer_thread.join();
     auto final_metrics = get_results(metrics);
     return final_metrics;

@@ -75,9 +75,23 @@ void LoggingContext::debug(std::string message) {
     }
 };
 
+void LoggingContext::debug(std::string message_fmt, std::string message) {
+    auto msg = std::vformat(message_fmt, std::make_format_args(message));
+    if (level == DEBUG) {
+        logger.write(std::format("DEBUG: {}", msg));
+    }
+};
+
 void LoggingContext::info(std::string message) {
     if (level >= INFO) {
         logger.write(std::format("INFO: {}", std::move(message)));
+    }
+}
+
+void LoggingContext::error(std::string message) const {
+    if (level >= ERROR) {
+        std::cerr << std::format("ERROR: {}", std::move(message));
+        exit(1);
     }
 };
 

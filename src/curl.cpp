@@ -123,14 +123,14 @@ LatencyMetrics CURLHandler::await(std::shared_ptr<StreamingResponse> resp) {
     return resp->latencies;
 }
 
-RingState CURLHandler::fetch(std::shared_ptr<StreamingResponse> resp, std::string*& to_write_to) {
+RingState CURLHandler::fetch(const std::shared_ptr<StreamingResponse>& resp, std::string*& to_write_to) {
     if (resp) {
-        return resp->ring.fetch(to_write_to);
+        return resp->fetch(to_write_to);
     }
     throw std::runtime_error("Invalid buffer.");
 }
 
-bool CURLHandler::write_to_buffer_finished(std::shared_ptr<StreamingResponse> resp) {
+bool CURLHandler::write_to_buffer_finished(const std::shared_ptr<StreamingResponse>& resp) {
     if (resp) {
         return resp->ring.producer_finished;
     }
@@ -206,7 +206,7 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
         if (chunk.back() != '}') {
             throw std::runtime_error("chunking error");
         }
-        streamed->ring.push(std::move(chunk));
+        streamed->push(std::move(chunk));
     }
     return;
 }

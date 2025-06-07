@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
     DatasetToRequestStrategy dataset_processor(Cola);
 
     FileWritingStrategy writer;
-    RequestSenderAndParserStrategy sender_and_parser;
+    RequestTransportStrategy sender_and_parser;
 
     ProcessingStrategy processor {
         dataset_processor,

@@ -39,28 +39,15 @@ public:
 
     std::string get_url();
     int offset = 0;
-    Data get_data() {
-        Data data;
-        bool is_finished = false;
-        while (!is_finished) {
-            auto url = get_url();
-            offset+=rows_per_query;
-            is_finished = data.add_rows(url);
-            if (data.rows.size() >= max_rows) {
-                is_finished = true;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(ms_between_curl));
-        }
-        Logger.info(std::format("Got {} rows.", data.rows.size()));
-        return std::move(data);
-    }
+    Data get_data();
 };
 
 
 
 struct Dataset {
     explicit Dataset(DatasetParams& params) {
-        data = std::move(params.get_data());
+        auto data_ = params.get_data();
+        data = std::move(data_);
     }
     Data data;
     LabelStatesMapping map;
@@ -71,48 +58,62 @@ struct Dataset {
 };
 
 
-struct DatasetToRequestStrategy {
+class DatasetToRequestStrategy {
+public:
     explicit DatasetToRequestStrategy(Dataset dataset) : dataset(std::move(dataset)) {};
-    Dataset dataset;
+    Dataset& get_dataset() {
+        return dataset;
+    }
     virtual ~DatasetToRequestStrategy() = default;
     virtual size_t dataset_size();
     virtual std::string get_prompt_from_row(json& row);
-    virtual RequestParameters fill_req_from_row(Dataset& dataset, int row_idx, RequestParameters& req);
+    virtual RequestParameters fill_req_from_row(const Dataset& dataset, int row_idx, RequestParameters& req);
+private:
+    Dataset dataset;
 };
 
-struct RequestSenderAndParserStrategy {
-    virtual ~RequestSenderAndParserStrategy() = default;
-    struct RequestProcessingParameters {
-        std::shared_ptr<StreamingResponse> resp;
-        CompletionResultsBuffer compl_result_buffer;
-        int max_retries;
-    };
-    virtual void fetch_response_and_add_to_results_buffer(
-        const RequestProcessingParameters& params,
-        const SharedClient& shared_client
-        );
+struct RequestProcessingParameters {
+    std::shared_ptr<StreamingResponse> resp;
+    CompletionResultsBuffer compl_result_buffer;
+    int max_retries;
+};
+
+class RequestTransportStrategy {
+public:
+    virtual ~RequestTransportStrategy() = default;
     RequestResultBuffer request_results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
-    std::atomic<int> job_id;
     virtual void send_and_add_to_buffer(
-        Dataset& bench,
+        const Dataset& bench,
         RequestParameters& req,
         SharedClient& shared_client
         );
+
+    int fetch_and_add_job_id() {
+        return job_id.fetch_add(1, std::memory_order_acquire);
+    }
+
+private:
+    std::atomic<int> job_id;
 };
 
-struct FileWritingStrategy {
+class FileWritingStrategy {
+public:
     virtual ~FileWritingStrategy() = default;
     virtual void write_to_jsonl_from_results_buffer(
-    Metrics& metrics,
-    RequestResultBuffer& buf,
-    const Dataset& dataset
+        Metrics& metrics,
+        RequestResultBuffer& buf,
+        const Dataset& dataset
     );
+    void finalize() {
+        can_finish = true;
+    }
+private:
     bool can_finish = false;
 };
 
 struct ProcessingStrategy {
     DatasetToRequestStrategy& dataset_processor;
-    RequestSenderAndParserStrategy& sender_and_parser;
+    RequestTransportStrategy& sender_and_parser;
     FileWritingStrategy& writer;
     SharedClient shared_client;
     FinalMetrics process_benchmark(
@@ -123,7 +124,7 @@ struct ProcessingStrategy {
 LabelStates get_label_state(const Dataset& dataset, const RequestParameters& req);
 
 void get_request_and_send_loop(
-    Dataset& benchmark,
-    RequestSenderAndParserStrategy& sender_and_parser,
+    const Dataset& benchmark,
+    RequestTransportStrategy& sender_and_parser,
     DatasetToRequestStrategy& data_processor,
     SharedClient shared_client);

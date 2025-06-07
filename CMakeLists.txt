@@ -21,6 +21,7 @@ add_library(scale_core
         src/logger.cpp
         src/result_types.cpp
         src/utils.cpp
+        src/streaming_response.cpp
 )
 
 

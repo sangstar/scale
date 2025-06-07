@@ -36,6 +36,7 @@ struct SPMCRingBuffer {
     std::atomic<size_t> tail;
     bool producer_finished = false;
     ~SPMCRingBuffer() = default;
+    std::atomic<bool> fetchable;
 
     SPMCRingBuffer() = default;
 
@@ -53,6 +54,7 @@ struct SPMCRingBuffer {
             data[idx].content = std::move(content);
             data[idx].ready.store(true, std::memory_order_release);
             head.store(next_head, std::memory_order_relaxed);
+
             return SUCCESS;
     }
 
