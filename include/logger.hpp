@@ -48,11 +48,15 @@ struct LoggingContext {
     ~LoggingContext() = default;
 
     void debug(std::string message);
+
     void debug(std::string message_fmt, std::string message);
+
     void info(std::string message);
+
     void error(std::string message) const;
 
     size_t set_start();
+
     void set_stop_and_display_time(size_t id, const char* name);
 };
 

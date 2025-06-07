@@ -94,9 +94,9 @@ std::shared_ptr<StreamingResponse> CURLHandler::post_stream(RequestParameters& r
             resp->latencies.end_to_end_latency = total;
             Logger.set_stop_and_display_time(idx, "e2e from server");
             Logger.debug(std::format(
-              "timing: DNS={}s, TCP={}s, SSL={}s, TTFT={}s, Total={}s",
-              name_lookup, connect - name_lookup, ssl - connect,
-              start_transfer, total
+                "timing: DNS={}s, TCP={}s, SSL={}s, TTFT={}s, Total={}s",
+                name_lookup, connect - name_lookup, ssl - connect,
+                start_transfer, total
             ));
             if (res != CURLE_OK) {
                 // TODO: C-style error here is weird

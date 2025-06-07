@@ -15,10 +15,11 @@ like:
   latency and evaluation metrics and writes the results to a file
   or stdout
 
-Generally very fast, mostly bottlenecked by network-bound I/O, allowing for 
+Generally very fast, mostly bottlenecked by network-bound I/O, allowing for
 client overhead to not muddy benchmark results even at high request concurrency.
 
 ## Usage example:
+
 The arguments to pass to `scale` are:
 
 ```shell
@@ -37,6 +38,7 @@ Options:
 ```
 
 And with an example run:
+
 ```shell
 ./scale --base-url https://api.openai.com/v1/completions --id nyu-mll/glue --config cola --split train --outfile results.jsonl
 INFO: Fetching data..

@@ -22,7 +22,7 @@ Data DatasetParams::get_data() {
     bool is_finished = false;
     while (!is_finished) {
         auto url = get_url();
-        offset+=rows_per_query;
+        offset += rows_per_query;
         is_finished = data.add_rows(url);
         if (data.rows.size() >= max_rows) {
             is_finished = true;
@@ -48,7 +48,7 @@ void get_request_and_send_loop(
     RequestTransportStrategy& sender_and_parser,
     DatasetToRequestStrategy& data_processor,
     std::shared_ptr<CURLHandler> shared_client
-    ) {
+) {
     RequestParameters req;
     while (true) {
         auto idx = sender_and_parser.fetch_and_add_job_id();
@@ -72,8 +72,7 @@ bool Data::add_rows(std::string& uri) {
     json as_json;
     try {
         as_json = parse_to_json(resp);
-    }
-    catch (const json::parse_error& e) {
+    } catch (const json::parse_error& e) {
         return true;
     }
     auto& rows_feature = as_json["rows"];
@@ -97,7 +96,10 @@ std::string DatasetToRequestStrategy::get_prompt_from_row(json& row) {
     return std::vformat(dataset.pre_formatted_text, std::make_format_args(substituted));
 }
 
-RequestParameters DatasetToRequestStrategy::fill_req_from_row(const Dataset& dataset, int row_idx, RequestParameters& req) {
+RequestParameters DatasetToRequestStrategy::fill_req_from_row(
+    const Dataset& dataset, int row_idx,
+    RequestParameters& req
+) {
     auto row = dataset.data.rows[row_idx]["row"];
     req.golden_label = row[dataset.class_label_feature_name].dump();
     req.prompt = this->get_prompt_from_row(row);
@@ -107,8 +109,7 @@ RequestParameters DatasetToRequestStrategy::fill_req_from_row(const Dataset& dat
 void fetch_response_and_add_to_results_buffer(
     const RequestProcessingParameters& params,
     const std::shared_ptr<CURLHandler>& shared_client
-    )
-{
+) {
     std::mutex compl_buffer_mutex;
     int retries = 0;
     std::string* json_str;
@@ -158,9 +159,8 @@ void RequestTransportStrategy::send_and_add_to_buffer(
     const Dataset& bench,
     RequestParameters& req,
     std::shared_ptr<CURLHandler>& shared_client
-    ) {
-
-    RequestProcessingParameters params {
+) {
+    RequestProcessingParameters params{
         .resp = shared_client->post_stream(req),
         .max_retries = 2,
         .compl_result_buffer = std::make_shared<std::vector<CompletionResults>>()
@@ -210,7 +210,7 @@ void FileWritingStrategy::write_to_jsonl_from_results_buffer(
     Metrics& metrics,
     RequestResultBuffer& buf,
     const Dataset& dataset
-    ) {
+) {
     std::ofstream outfile(metrics.output_jsonl);
 
     if (!outfile.is_open()) {
@@ -251,7 +251,7 @@ FinalMetrics ProcessingStrategy::process_benchmark(const char* filename_jsonl) {
             metrics,
             this->sender_and_parser.request_results_buffer,
             this->dataset_processor.get_dataset()
-            );
+        );
     });
 
     std::vector<std::thread> workers;
@@ -274,5 +274,4 @@ FinalMetrics ProcessingStrategy::process_benchmark(const char* filename_jsonl) {
     writer_thread.join();
     auto final_metrics = get_results(metrics);
     return final_metrics;
-
 }

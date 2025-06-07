@@ -21,6 +21,7 @@ using SharedClient = std::shared_ptr<CURLHandler>;
 
 struct Data {
     Rows rows;
+
     bool add_rows(std::string& uri);
 };
 
@@ -33,15 +34,17 @@ public:
     int max_rows = 1000;
 
     DatasetParams(const char* id_, const char* config_, const char* split_)
-        : id(std::string(id_)), config(std::string(config_)), split(std::string(split_)) {};
+        : id(std::string(id_)), config(std::string(config_)), split(std::string(split_)) {
+    };
 
     int rows_per_query = 100;
 
     std::string get_url();
+
     int offset = 0;
+
     Data get_data();
 };
-
 
 
 struct Dataset {
@@ -49,25 +52,32 @@ struct Dataset {
         auto data_ = params.get_data();
         data = std::move(data_);
     }
+
     Data data;
     LabelStatesMapping map;
     std::string class_label_feature_name = "label";
     std::string pre_formatted_text;
     std::string_view prompt_feature_names_array[1] = {"sentence"};
-
 };
 
 
 class DatasetToRequestStrategy {
 public:
-    explicit DatasetToRequestStrategy(Dataset dataset) : dataset(std::move(dataset)) {};
+    explicit DatasetToRequestStrategy(Dataset dataset) : dataset(std::move(dataset)) {
+    };
+
     Dataset& get_dataset() {
         return dataset;
     }
+
     virtual ~DatasetToRequestStrategy() = default;
+
     virtual size_t dataset_size();
+
     virtual std::string get_prompt_from_row(json& row);
+
     virtual RequestParameters fill_req_from_row(const Dataset& dataset, int row_idx, RequestParameters& req);
+
 private:
     Dataset dataset;
 };
@@ -81,12 +91,14 @@ struct RequestProcessingParameters {
 class RequestTransportStrategy {
 public:
     virtual ~RequestTransportStrategy() = default;
+
     RequestResultBuffer request_results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
+
     virtual void send_and_add_to_buffer(
         const Dataset& bench,
         RequestParameters& req,
         SharedClient& shared_client
-        );
+    );
 
     int fetch_and_add_job_id() {
         return job_id.fetch_add(1, std::memory_order_acquire);
@@ -99,14 +111,17 @@ private:
 class FileWritingStrategy {
 public:
     virtual ~FileWritingStrategy() = default;
+
     virtual void write_to_jsonl_from_results_buffer(
         Metrics& metrics,
         RequestResultBuffer& buf,
         const Dataset& dataset
     );
+
     void finalize() {
         can_finish = true;
     }
+
 private:
     bool can_finish = false;
 };
@@ -116,9 +131,10 @@ struct ProcessingStrategy {
     RequestTransportStrategy& sender_and_parser;
     FileWritingStrategy& writer;
     SharedClient shared_client;
+
     FinalMetrics process_benchmark(
         const char* filename_jsonl
-        );
+    );
 };
 
 LabelStates get_label_state(const Dataset& dataset, const RequestParameters& req);
@@ -127,4 +143,5 @@ void get_request_and_send_loop(
     const Dataset& benchmark,
     RequestTransportStrategy& sender_and_parser,
     DatasetToRequestStrategy& data_processor,
-    SharedClient shared_client);
+    SharedClient shared_client
+);

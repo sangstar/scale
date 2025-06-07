@@ -30,7 +30,6 @@ Options:
 )";
 
 int main(int argc, char* argv[]) {
-
     auto check_required_args = [](std::string& to_set, const char* cli_arg) {
         if (to_set.empty()) {
             std::cerr << "Required arg not set: " << cli_arg << std::endl;
@@ -88,19 +87,20 @@ int main(int argc, char* argv[]) {
     Cola.class_label_feature_name = "label";
     Cola.pre_formatted_text = "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
     Cola.map = LabelStatesMapping{
-                {"-1", NO_LABEL},
-                {"0", NO},
-                {"1", YES},
-            };
+        {"-1", NO_LABEL},
+        {"0", NO},
+        {"1", YES},
+    };
 
-    auto shared_client = std::make_shared<CURLHandler>("https://api.openai.com/v1/completions", std::getenv("OPENAI_API_KEY"));
+    auto shared_client = std::make_shared<CURLHandler>("https://api.openai.com/v1/completions",
+                                                       std::getenv("OPENAI_API_KEY"));
 
     DatasetToRequestStrategy dataset_processor(Cola);
 
     FileWritingStrategy writer;
     RequestTransportStrategy sender_and_parser;
 
-    ProcessingStrategy processor {
+    ProcessingStrategy processor{
         dataset_processor,
         sender_and_parser,
         writer,
