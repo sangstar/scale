@@ -11,13 +11,14 @@
 #include "streaming_response.hpp"
 #include "completion_types.hpp"
 #include "curl.hpp"
-#include "dataset.hpp"
 #include "labels.hpp"
 #include "result_types.hpp"
 
 using RequestResultBuffer = std::shared_ptr<MPSCRingBuffer<RequestResult>>;
 using CompletionResultsBuffer = std::shared_ptr<std::vector<CompletionResults>>;
 using SharedClient = std::shared_ptr<CURLHandler>;
+
+using Rows = std::vector<json>;
 
 struct Data {
     Rows rows;

@@ -17,7 +17,6 @@ FetchContent_MakeAvailable(Catch2)
 add_library(scale_core
         src/benchmark_types.cpp
         src/curl.cpp
-        src/dataset.cpp
         src/logger.cpp
         src/result_types.cpp
         src/utils.cpp
