@@ -4,8 +4,20 @@
 
 #include "streaming_response.hpp"
 
+bool StreamingResponse::check_producer_finished() {
+    return ring.producer_finished;
+}
+
 bool StreamingResponse::ready_to_fetch() const {
-    return fetchable.load(std::memory_order_acquire);
+    auto can_fetch = fetchable.load(std::memory_order_acquire);
+    return can_fetch || done; // done used here so threads can stop waiting and end
+}
+
+void StreamingResponse::finalize() {
+    std::lock_guard lock(mu);
+    ring.producer_finished = true;
+    done = true;
+    cv.notify_all();
 }
 
 void StreamingResponse::push(std::string str) {

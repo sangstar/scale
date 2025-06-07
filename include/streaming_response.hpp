@@ -12,17 +12,18 @@ public:
     bool got_ttft;
     time_point start;
     LatencyMetrics latencies;
-    SPMCRingBuffer<std::string> ring;
     std::thread t;
     std::condition_variable cv;
     bool done;
+    bool check_producer_finished();
     bool ready_to_fetch() const;
+    void finalize();
     std::mutex mu;
     void push(std::string str);
     RingState fetch(std::string*& item);
 private:
     std::atomic<bool> fetchable;
-
+    SPMCRingBuffer<std::string> ring;
 };
 
 

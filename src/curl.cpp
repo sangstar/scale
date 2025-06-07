@@ -68,45 +68,54 @@ std::shared_ptr<StreamingResponse> CURLHandler::post_stream(RequestParameters& r
     //       else
     std::thread t(
         [post_data, resp, this] {
-            CURL* ephemeral = curl_easy_init();
-            curl_easy_setopt(ephemeral, CURLOPT_URL, this->uri.c_str());
-            curl_easy_setopt(ephemeral, CURLOPT_HTTPHEADER, headers);
-            curl_easy_setopt(ephemeral, CURLOPT_POST, 1L);
-            curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDS, post_data->c_str());
-            curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDSIZE, post_data->size());
-            curl_easy_setopt(ephemeral, CURLOPT_WRITEFUNCTION, write_cb_to_queue);
-            if (Logger.level == DEBUG) {
-                curl_easy_setopt(ephemeral, CURLOPT_VERBOSE, 1L);
+            bool finished = false;
+            while (!finished) {
+                CURL* ephemeral = curl_easy_init();
+                curl_easy_setopt(ephemeral, CURLOPT_URL, this->uri.c_str());
+                curl_easy_setopt(ephemeral, CURLOPT_HTTPHEADER, headers);
+                curl_easy_setopt(ephemeral, CURLOPT_POST, 1L);
+                curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDS, post_data->c_str());
+                curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDSIZE, post_data->size());
+                curl_easy_setopt(ephemeral, CURLOPT_WRITEFUNCTION, write_cb_to_queue);
+                curl_easy_setopt(ephemeral, CURLOPT_TIMEOUT, 4L);
+                if (Logger.level == DEBUG) {
+                    curl_easy_setopt(ephemeral, CURLOPT_VERBOSE, 1L);
+                }
+                curl_easy_setopt(ephemeral, CURLOPT_WRITEDATA, resp.get());
+                auto idx = Logger.set_start();
+                resp->start = std::chrono::high_resolution_clock::now();
+                auto res = curl_easy_perform(ephemeral);
+
+                double name_lookup, connect, ssl, start_transfer, total;
+                curl_easy_getinfo(ephemeral, CURLINFO_NAMELOOKUP_TIME, &name_lookup);
+                curl_easy_getinfo(ephemeral, CURLINFO_CONNECT_TIME, &connect);
+                curl_easy_getinfo(ephemeral, CURLINFO_APPCONNECT_TIME, &ssl);
+                curl_easy_getinfo(ephemeral, CURLINFO_STARTTRANSFER_TIME, &start_transfer);
+                curl_easy_getinfo(ephemeral, CURLINFO_TOTAL_TIME, &total);
+
+                resp->latencies.ttft = start_transfer;
+                resp->latencies.end_to_end_latency = total;
+                Logger.set_stop_and_display_time(idx, "e2e from server");
+                Logger.debug(std::format(
+                    "timing: DNS={}s, TCP={}s, SSL={}s, TTFT={}s, Total={}s",
+                    name_lookup, connect - name_lookup, ssl - connect,
+                    start_transfer, total
+                ));
+                if (res != CURLE_OK) {
+                    if (res == CURLE_OPERATION_TIMEDOUT) {
+                        Logger.debug("Request timed out, retrying..");
+                        curl_easy_cleanup(ephemeral);
+                    } else {
+                        // TODO: C-style error here is weird
+                        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+                        exit(1);
+                    }
+                } else {
+                    resp->finalize();
+                    curl_easy_cleanup(ephemeral);
+                    finished = true;
+                }
             }
-            curl_easy_setopt(ephemeral, CURLOPT_WRITEDATA, resp.get());
-            auto idx = Logger.set_start();
-            resp->start = std::chrono::high_resolution_clock::now();
-            auto res = curl_easy_perform(ephemeral);
-
-            double name_lookup, connect, ssl, start_transfer, total;
-            curl_easy_getinfo(ephemeral, CURLINFO_NAMELOOKUP_TIME, &name_lookup);
-            curl_easy_getinfo(ephemeral, CURLINFO_CONNECT_TIME, &connect);
-            curl_easy_getinfo(ephemeral, CURLINFO_APPCONNECT_TIME, &ssl);
-            curl_easy_getinfo(ephemeral, CURLINFO_STARTTRANSFER_TIME, &start_transfer);
-            curl_easy_getinfo(ephemeral, CURLINFO_TOTAL_TIME, &total);
-
-            resp->latencies.ttft = start_transfer;
-            resp->latencies.end_to_end_latency = total;
-            Logger.set_stop_and_display_time(idx, "e2e from server");
-            Logger.debug(std::format(
-                "timing: DNS={}s, TCP={}s, SSL={}s, TTFT={}s, Total={}s",
-                name_lookup, connect - name_lookup, ssl - connect,
-                start_transfer, total
-            ));
-            if (res != CURLE_OK) {
-                // TODO: C-style error here is weird
-                fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-                exit(1);
-            }
-            resp->ring.producer_finished = true;
-            resp->done = true;
-
-            curl_easy_cleanup(ephemeral);
         }
     );
     resp->t = std::move(t);
@@ -132,7 +141,7 @@ RingState CURLHandler::fetch(const std::shared_ptr<StreamingResponse>& resp, std
 
 bool CURLHandler::write_to_buffer_finished(const std::shared_ptr<StreamingResponse>& resp) {
     if (resp) {
-        return resp->ring.producer_finished;
+        return resp->check_producer_finished();
     }
     return false;
 }

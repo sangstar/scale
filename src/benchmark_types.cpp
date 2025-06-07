@@ -73,6 +73,7 @@ bool Data::add_rows(std::string& uri) {
     try {
         as_json = parse_to_json(resp);
     } catch (const json::parse_error& e) {
+        Logger.debug("Got parser error from resp: {}", resp);
         return true;
     }
     auto& rows_feature = as_json["rows"];
