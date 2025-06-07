@@ -25,6 +25,7 @@ Options:
   --split <split>      Dataset split (e.g. train, test)
   --outfile <path>     Output jsonl file path (e.g. output.jsonl)
   --req-rate <int>     Time between requests to server in ms (default 1000)
+  --timeout <int>      Maximum seconds to wait before retrying a request (default no timeout)
   -h, --help           Show this help message
 )";
 
@@ -43,8 +44,8 @@ int main(int argc, char* argv[]) {
     std::string split;
     std::string outfile;
     std::string req_rate = "1000";
+    std::optional<std::string> timeout_sec = std::nullopt;
 
-    int req_rate_as_int = 1000;
 
     std::string arg;
     for (int i = 1; i < argc; ++i) {
@@ -63,9 +64,10 @@ int main(int argc, char* argv[]) {
             split = argv[++i];
         } else if (arg == "--outfile" && i + 1 < argc) {
             outfile = argv[++i];
+        } else if (arg == "--timeout" && i + 1 < argc) {
+            timeout_sec = argv[++i];
         } else if (arg == "--req-rate" && i + 1 < argc) {
             req_rate = argv[++i];
-            req_rate_as_int = std::stoi(req_rate);
         } else {
             std::cerr << "Unrecognized or incomplete argument: " << arg << "\n";
             return 1;
@@ -77,6 +79,11 @@ int main(int argc, char* argv[]) {
     check_required_args(config, "--config");
     check_required_args(split, "--split");
     check_required_args(outfile, "--outfile");
+
+    std::optional<long> timeout_long = std::nullopt;
+    if (timeout_sec.has_value()) {
+        timeout_long = std::stol(timeout_sec.value());
+    }
 
     Logger.info("Fetching data..");
 
@@ -91,8 +98,11 @@ int main(int argc, char* argv[]) {
         {"1", YES},
     };
 
+
+
     auto shared_client = std::make_shared<CURLHandler>("https://api.openai.com/v1/completions",
-                                                       std::getenv("OPENAI_API_KEY"));
+                                                       std::getenv("OPENAI_API_KEY"),
+                                                       timeout_long);
 
     DatasetToRequestStrategy dataset_processor(Cola);
 

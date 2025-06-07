@@ -25,7 +25,8 @@ size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp)
     return size * nmemb;
 }
 
-CURLHandler::CURLHandler(const char* uri, const char* api_key) {
+CURLHandler::CURLHandler(const char* uri, const char* api_key, std::optional<long> timeout)  :
+    timeout(timeout) {
     this->uri = std::string(uri);
     if (!api_key) {
         throw std::runtime_error("No api key provided.");
@@ -77,7 +78,12 @@ std::shared_ptr<StreamingResponse> CURLHandler::post_stream(RequestParameters& r
                 curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDS, post_data->c_str());
                 curl_easy_setopt(ephemeral, CURLOPT_POSTFIELDSIZE, post_data->size());
                 curl_easy_setopt(ephemeral, CURLOPT_WRITEFUNCTION, write_cb_to_queue);
-                curl_easy_setopt(ephemeral, CURLOPT_TIMEOUT, 4L);
+
+                if (this->timeout.has_value()) {
+                    // Logger.debug("Using timeout: {}", std::to_string(this->timeout.value()));
+                    curl_easy_setopt(ephemeral, CURLOPT_TIMEOUT, this->timeout);
+                }
+
                 if (Logger.level == DEBUG) {
                     curl_easy_setopt(ephemeral, CURLOPT_VERBOSE, 1L);
                 }

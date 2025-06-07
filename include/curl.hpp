@@ -28,7 +28,12 @@ class CURLHandler {
 public:
     std::string uri;
 
-    explicit CURLHandler(const char* uri, const char* api_key = "");
+    explicit CURLHandler(
+        const char* uri,
+        const char* api_key = "",
+        std::optional<long> timeout = std::nullopt);
+
+    std::optional<long> timeout;
 
     static std::string get(const char* query);
 

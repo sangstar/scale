@@ -97,17 +97,14 @@ void LoggingContext::error(std::string message) const {
 
 void AsyncLogger::display_loop() {
     while (!done) {
-        std::unique_lock<std::mutex> lock(mu);
-        cv.wait(lock, [this] { return ready_to_read.load(std::memory_order_acquire) || done; });
-        if (done) {
-            break;
+        {
+            std::unique_lock<std::mutex> wait_response_lock(mu);
+            cv.wait(wait_response_lock, [this] { return ready_to_read.load(std::memory_order_acquire) || done; });
         }
         auto to_display = messages.fetch();
         if (to_display.state == SUCCESS) {
-            if (to_display.content.empty()) {
-                throw std::runtime_error("Fail");
-            }
-            auto to_write = std::format("{}\n", to_display.content);
+            auto msg = to_display.content.value();
+            auto to_write = std::format("{}\n", msg);
             ::write(fd, to_write.c_str(), to_write.size());
         }
     }

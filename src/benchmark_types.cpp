@@ -199,7 +199,7 @@ void RequestTransportStrategy::send_and_add_to_buffer(
         result.params = req;
         auto state = get_label_state(bench, result.params);
         result.guessed_correctly = guessed_correctly(state, result);
-        request_results_buffer->push(result);
+        request_results_buffer->push(std::move(result));
     } else {
         // If the worker found no work to be processed from the stream buffer, just make a note of
         // that and finish.

@@ -32,7 +32,7 @@ public:
     const std::string config = "cola";
     const std::string split = "train";
     int ms_between_curl = 500;
-    int max_rows = 1000;
+    int max_rows = 4000;
 
     DatasetParams(const char* id_, const char* config_, const char* split_)
         : id(std::string(id_)), config(std::string(config_)), split(std::string(split_)) {
