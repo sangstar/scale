@@ -1,0 +1,15 @@
+dataset:
+  tag: nyu-mll/glue
+  subset: qqp
+  split: train
+pre_formatted_prompt: "Are the following two questions a paraphrase of eachother? {}"
+sentence_tags:
+  - question1
+  - question2
+class_label:
+  tag: label
+  values:
+    - response: "yes"
+      id: 1
+    - response: "no"
+      id: 0

@@ -1,0 +1,15 @@
+dataset:
+  tag: nyu-mll/glue
+  subset: mrpc
+  split: train
+pre_formatted_prompt: "Is the following sentence pair semantically equivalent?\n{}"
+sentence_tags:
+  - sentence1
+  - sentence2
+class_label:
+  tag: label
+  values:
+    - response: "yes"
+      id: 1
+    - response: "no"
+      id: 0
