@@ -28,7 +28,7 @@ The arguments to pass to `scale` are:
 Usage: scale [OPTIONS]
 
 Options:
-  <path-to-yaml>       Path to a .yaml file containing the dataset config (see benchmarks folder)
+  <path-to-yaml>       Path to a .yaml file containing the benchmark config
 
   --base-url <url>     Base URL to fetch from (e.g. https://api.openai.com/v1/completions)
   --outfile <path>     Output jsonl file path (e.g. output.jsonl)
