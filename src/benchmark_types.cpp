@@ -134,7 +134,7 @@ std::string DatasetToRequestStrategy::get_prompt_from_row(json& row) {
     for (const auto& value : cfg.label.values) {
         possible_answers.emplace_back(value.response);
     }
-    auto pre_formatted_task = std::vformat(cfg.pre_formatted_prompt, std::make_format_args(join(sentences, "| ")));
+    auto pre_formatted_task = std::vformat(cfg.pre_formatted_prompt, std::make_format_args(join(sentences, " | ")));
 
     auto prompt = std::vformat("{}\nPlease choose from the following choices: {}\n Answer: ",
         std::make_format_args(pre_formatted_task, join(possible_answers)));
