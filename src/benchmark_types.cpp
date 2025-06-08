@@ -7,40 +7,69 @@
 #include <fstream>
 
 #include "utils.hpp"
+#include <stdexcept>
+
 
 std::string debug_json(json& j) {
     return j.dump(2);
 }
 
-std::string DatasetParams::get_url() {
-    return std::format(BenchmarkingConstants::format_string,
-                       id, config, split, offset);
+
+#define TODO() throw std::logic_error("TODO hit at " __FILE__ ":" + std::to_string(__LINE__))
+
+
+Data& DatasetParsingStrategy::get_data() {
+    return data;
 }
 
-Data DatasetParams::get_data() {
-    Data data;
+Config& DatasetParsingStrategy::get_config() {
+    return this->cfg;
+}
+
+void HFDatasetParser::initialize_config() {
+    Config config;
+    Config::Dataset dataset;
+    Config::ClassLabel label;
+    config.pre_formatted_prompt = config_yaml["pre_formatted_prompt"].as<std::string>();
+    config.sentence_tags = config_yaml["sentence_tags"].as<std::vector<std::string>>();
+
+    dataset.tag = config_yaml["dataset"]["tag"].as<std::string>();
+    dataset.subset = config_yaml["dataset"]["subset"].as<std::string>();
+    dataset.split = config_yaml["dataset"]["split"].as<std::string>();
+    config.dataset = dataset;
+
+    label.tag = config_yaml["class_label"]["tag"].as<std::string>();
+
+    std::vector<Config::Value> value_vec;
+    for (const auto& value: config_yaml["class_label"]["values"]) {
+        Config::Value val;
+        val.id = value["id"].as<int>();
+        val.response = value["response"].as<std::string>();
+        value_vec.emplace_back(std::move(val));
+    }
+    label.values = std::move(value_vec);
+
+    config.label = label;
+    cfg = std::move(config);
+}
+
+std::string HFDatasetParser::get_url() {
+    return std::format(BenchmarkingConstants::format_string,
+                       cfg.dataset.tag, cfg.dataset.subset, cfg.dataset.split, this->offset);
+}
+
+void HFDatasetParser::download() {
     bool is_finished = false;
     while (!is_finished) {
         auto url = get_url();
         offset += rows_per_query;
-        is_finished = data.add_rows(url);
+        is_finished = add_rows(data, url);
         if (data.rows.size() >= max_rows) {
             is_finished = true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(ms_between_curl));
     }
     Logger.info(std::format("Got {} rows.", data.rows.size()));
-    return std::move(data);
-}
-
-LabelStates get_label_state(const Dataset& dataset, const RequestParameters& req) {
-    auto label = req.golden_label;
-    for (auto [k, v]: dataset.map) {
-        if (label == k) {
-            return v;
-        }
-    }
-    return NO_LABEL;
 }
 
 void get_request_and_send_loop(
@@ -62,7 +91,7 @@ void get_request_and_send_loop(
     }
 };
 
-bool Data::add_rows(std::string& uri) {
+bool HFDatasetParser::add_rows(Data& data, std::string& uri) {
     auto resp = CURLHandler::get(uri.c_str());
     if (str_contains(resp, BenchmarkingConstants::rate_limit_text.data())) {
         Logger.info("Hit rate limit. Slowing down...");
@@ -76,35 +105,52 @@ bool Data::add_rows(std::string& uri) {
         Logger.debug("Got parser error from resp: {}", resp);
         return true;
     }
-    auto& rows_feature = as_json["rows"];
-    if (!rows_feature.is_array()) {
-        Logger.error(std::format("Expected 'rows' to be an array, got: {}", rows_feature.dump(2)));
-        return false;
-    }
-    rows.insert(rows.end(), as_json["rows"].begin(), as_json["rows"].end());
+    parse_rows(data, as_json["rows"]);
     return false;
 }
 
+void HFDatasetParser::parse_rows(Data& data, json& rows) {
+    if (!rows.is_array()) {
+        Logger.error(std::format("Expected 'rows' to be an array, got: {}", rows.dump(2)));
+    }
+    data.rows.insert(data.rows.end(), rows.begin(), rows.end());
+}
+
+json& HFDatasetParser::get_row(int row_idx) {
+    return data.rows[row_idx]["row"];
+}
+
 size_t DatasetToRequestStrategy::dataset_size() {
-    return this->dataset.data.rows.size();
+    return this->dataset->get_data().rows.size();
 }
 
 std::string DatasetToRequestStrategy::get_prompt_from_row(json& row) {
-    auto& sentence_str = this->dataset.prompt_feature_names_array[0];
-    Logger.debug("Row: {}", debug_json(row));
-    auto substituted = row[sentence_str].get<std::string>();
-    Logger.debug("Got prompt from row: {}", substituted);
-    return std::vformat(dataset.pre_formatted_text, std::make_format_args(substituted));
+    const auto& cfg = dataset->get_config();
+    std::vector<const std::string> sentences;
+    std::vector<const std::string> possible_answers;
+    for (const auto& sentence_tag : cfg.sentence_tags) {
+        sentences.emplace_back(row[sentence_tag]);
+    }
+    for (const auto& value : cfg.label.values) {
+        possible_answers.emplace_back(value.response);
+    }
+    auto pre_formatted_task = std::vformat(cfg.pre_formatted_prompt, std::make_format_args(join(sentences, "| ")));
+
+    auto prompt = std::vformat("{}\nPlease choose from the following choices: {}\n Answer: ",
+        std::make_format_args(pre_formatted_task, join(possible_answers)));
+    return std::move(prompt);
 }
 
-RequestParameters DatasetToRequestStrategy::fill_req_from_row(
+void DatasetToRequestStrategy::fill_req_from_row(
     const Dataset& dataset, int row_idx,
     RequestParameters& req
 ) {
-    auto row = dataset.data.rows[row_idx]["row"];
-    req.golden_label = row[dataset.class_label_feature_name].dump();
+    const auto& cfg = dataset->get_config();
+
+    auto row = dataset->get_row(row_idx);
+
+    req.golden_label = row[cfg.label.tag];
     req.prompt = this->get_prompt_from_row(row);
-    return req;
 }
 
 void fetch_response_and_add_to_results_buffer(
@@ -157,7 +203,7 @@ void fetch_response_and_add_to_results_buffer(
 
 
 void RequestTransportStrategy::send_and_add_to_buffer(
-    const Dataset& bench,
+    const Dataset& dataset,
     RequestParameters& req,
     std::shared_ptr<CURLHandler>& shared_client
 ) {
@@ -197,8 +243,7 @@ void RequestTransportStrategy::send_and_add_to_buffer(
         result.completion_results = std::move(*params.compl_result_buffer);
         result.latencies = latencies;
         result.params = req;
-        auto state = get_label_state(bench, result.params);
-        result.guessed_correctly = guessed_correctly(state, result);
+        result.guessed_correctly = guessed_correctly(dataset, result);
         request_results_buffer->push(std::move(result));
     } else {
         // If the worker found no work to be processed from the stream buffer, just make a note of

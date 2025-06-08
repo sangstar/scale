@@ -87,16 +87,8 @@ int main(int argc, char* argv[]) {
 
     Logger.info("Fetching data..");
 
-    DatasetParams params(id.c_str(), config.c_str(), split.c_str());
-    params.ms_between_curl = 1000;
-    Dataset Cola(params);
-    Cola.class_label_feature_name = "label";
-    Cola.pre_formatted_text = "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
-    Cola.map = LabelStatesMapping{
-        {"-1", NO_LABEL},
-        {"0", NO},
-        {"1", YES},
-    };
+    Dataset params = std::make_unique<HFDatasetParser>("../qqp.yaml");
+
 
 
 
@@ -104,7 +96,7 @@ int main(int argc, char* argv[]) {
                                                        std::getenv("OPENAI_API_KEY"),
                                                        timeout_long);
 
-    DatasetToRequestStrategy dataset_processor(Cola);
+    DatasetToRequestStrategy dataset_processor(std::move(params));
 
     FileWritingStrategy writer;
     RequestTransportStrategy sender_and_parser;

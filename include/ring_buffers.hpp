@@ -70,7 +70,7 @@ struct RingBuffer {
             return std::nullopt;
         }
         auto idx = polled_tail % data.size();
-        return PolledIdx(polled_tail, idx, polled_tail + 1);
+        return PolledIdx{polled_tail, idx, polled_tail + 1};
     }
 
 

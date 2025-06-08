@@ -8,7 +8,6 @@
 #include "curl.hpp"
 #include "logger.hpp"
 #include "constants.hpp"
-#include "dataset.hpp"
 
 const std::string filename = "stdout";
 LoggingContext Logger(filename, DEBUG);
@@ -127,34 +126,9 @@ LoggingContext Logger(filename, DEBUG);
 //     ctx.perform_benchmark("output.jsonl");
 // }
 
-TEST_CASE( "Test new implementation" ) {
+TEST_CASE( "Test load YAML" ) {
+    HFDatasetParser params("../../mrpc.yaml");
 
-    DatasetParams params("nyu-mll/glue", "cola", "train");
-    params.ms_between_curl = 1000;
-    Logger.info("Getting dataset...");
-    Dataset Cola(params);
-    Cola.class_label_feature_name = "label";
-    Cola.pre_formatted_text = "Is the following sentence grammatically acceptable?\n{}\nAnswer:";
-    Cola.map = LabelStatesMapping{
-            {"-1", NO_LABEL},
-            {"0", NO},
-            {"1", YES},
-        };
 
-    auto shared_client = std::make_shared<CURLHandler>("https://api.openai.com/v1/completions", std::getenv("OPENAI_API_KEY"));
-
-    DatasetToRequestStrategy dataset_processor(Cola);
-
-    FileWritingStrategy writer;
-    RequestSenderAndParserStrategy sender_and_parser;
-
-    ProcessingStrategy processor {
-        dataset_processor,
-        sender_and_parser,
-        writer,
-        shared_client
-    };
-
-    auto result = processor.process_benchmark("output_new.jsonl");
-    std::cout << "Complete.";
+    REQUIRE(1 == 1);
 }

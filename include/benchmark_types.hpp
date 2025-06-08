@@ -11,8 +11,8 @@
 #include "streaming_response.hpp"
 #include "completion_types.hpp"
 #include "curl.hpp"
-#include "labels.hpp"
 #include "result_types.hpp"
+#include "yaml-cpp/yaml.h"
 
 using RequestResultBuffer = std::shared_ptr<MPSCRingBuffer<RequestResult>>;
 using CompletionResultsBuffer = std::shared_ptr<std::vector<CompletionResults>>;
@@ -22,43 +22,83 @@ using Rows = std::vector<json>;
 
 struct Data {
     Rows rows;
-
-    bool add_rows(std::string& uri);
 };
 
-class DatasetParams {
-public:
-    const std::string id = "nyu-mll/glue";
-    const std::string config = "cola";
-    const std::string split = "train";
-    int ms_between_curl = 500;
-    int max_rows = 4000;
 
-    DatasetParams(const char* id_, const char* config_, const char* split_)
-        : id(std::string(id_)), config(std::string(config_)), split(std::string(split_)) {
+struct Config {
+    struct Value {
+        std::string response;
+        int id;
     };
-
-    int rows_per_query = 100;
-
-    std::string get_url();
-
-    int offset = 0;
-
-    Data get_data();
+    struct Dataset {
+        std::string tag;
+        std::string subset;
+        std::string split;
+    };
+    std::string pre_formatted_prompt;
+    std::vector<std::string> sentence_tags;
+    struct ClassLabel {
+        std::string tag;
+        std::vector<Value> values;
+    };
+    Dataset dataset;
+    ClassLabel label;
 };
 
+class DatasetParsingStrategy {
+public:
 
-struct Dataset {
-    explicit Dataset(DatasetParams& params) {
-        auto data_ = params.get_data();
-        data = std::move(data_);
+    virtual ~DatasetParsingStrategy() = default;
+
+    virtual std::string get_url() = 0;
+
+    virtual Data& get_data();
+
+    virtual void download() = 0;
+
+    virtual bool add_rows(Data& data, std::string& uri) = 0;
+
+    virtual Config& get_config();
+
+    virtual json& get_row(int row_idx) = 0;
+
+protected:
+    int ms_between_curl = 500;
+    int max_rows = 200;
+    int offset = 0;
+    int rows_per_query = 100;
+    Config cfg;
+    Data data;
+};
+
+using Dataset = std::unique_ptr<DatasetParsingStrategy>;
+
+class HFDatasetParser final : public DatasetParsingStrategy {
+public:
+
+    HFDatasetParser(const char* yaml_filename) :
+          config_yaml(YAML::LoadFile(yaml_filename)) {
+        initialize_config();
+        download();
     }
 
-    Data data;
-    LabelStatesMapping map;
-    std::string class_label_feature_name = "label";
-    std::string pre_formatted_text;
-    std::string_view prompt_feature_names_array[1] = {"sentence"};
+
+    void initialize_config();
+
+    std::string get_url() override;
+
+    void download();
+
+    bool add_rows(Data& data, std::string& uri) override;
+
+    void parse_rows(Data& data, json& rows);
+
+    json& get_row(int row_idx);
+
+
+
+private:
+    YAML::Node config_yaml;
 };
 
 
@@ -77,7 +117,7 @@ public:
 
     virtual std::string get_prompt_from_row(json& row);
 
-    virtual RequestParameters fill_req_from_row(const Dataset& dataset, int row_idx, RequestParameters& req);
+    virtual void fill_req_from_row(const Dataset& dataset, int row_idx, RequestParameters& req);
 
 private:
     Dataset dataset;
@@ -96,7 +136,7 @@ public:
     RequestResultBuffer request_results_buffer = std::make_shared<MPSCRingBuffer<RequestResult>>();
 
     virtual void send_and_add_to_buffer(
-        const Dataset& bench,
+        const Dataset& dataset,
         RequestParameters& req,
         SharedClient& shared_client
     );
@@ -137,8 +177,6 @@ struct ProcessingStrategy {
         const char* filename_jsonl
     );
 };
-
-LabelStates get_label_state(const Dataset& dataset, const RequestParameters& req);
 
 void get_request_and_send_loop(
     const Dataset& benchmark,
