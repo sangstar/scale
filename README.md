@@ -22,7 +22,7 @@ client overhead to not muddy benchmark results even at high request concurrency.
 
 The arguments to pass to `scale` are:
 
-```shell
+```text
 ./scale --help
 
 Usage: scale [OPTIONS]
