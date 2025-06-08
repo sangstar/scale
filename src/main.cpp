@@ -24,6 +24,7 @@ Options:
   --base-url <url>     Base URL to fetch from (e.g. https://api.openai.com/v1/completions)
   --outfile <path>     Output jsonl file path (e.g. output.jsonl)
   --req-rate <int>     Time between requests to server in ms (default 1000)
+  --n-samples <int>    Maximum number of samples (default 10000)
   --timeout <int>      Maximum seconds to wait before retrying a request (default no timeout)
   --help               Show this help message
 )";
@@ -42,6 +43,7 @@ int main(int argc, char* argv[]) {
     std::string base_url;
     std::string outfile;
     std::string req_rate = "1000";
+    std::optional<std::string> n_samples = std::nullopt;
     std::optional<std::string> timeout_sec = std::nullopt;
 
     config_path_or_help = argv[1];
@@ -60,6 +62,8 @@ int main(int argc, char* argv[]) {
             outfile = argv[++i];
         } else if (arg == "--timeout" && i + 1 < argc) {
             timeout_sec = argv[++i];
+        } else if (arg == "--n-samples" && i + 1 < argc) {
+            n_samples = argv[++i];
         } else if (arg == "--req-rate" && i + 1 < argc) {
             req_rate = argv[++i];
         } else {
@@ -80,6 +84,12 @@ int main(int argc, char* argv[]) {
     Logger.info("Fetching data..");
 
     Dataset params = std::make_unique<HFDatasetParser>(config_path_or_help.c_str());
+    if (n_samples.has_value()) {
+        auto samples = n_samples.value();
+        Logger.debug("Max samples: {}", samples);
+        params->max_rows = std::stoi(samples);
+    }
+    params->download();
 
 
 

@@ -62,9 +62,10 @@ public:
 
     virtual json& get_row(int row_idx) = 0;
 
+    int max_rows = 10000;
+
 protected:
     int ms_between_curl = 500;
-    int max_rows = 200;
     int offset = 0;
     int rows_per_query = 100;
     Config cfg;
@@ -79,7 +80,6 @@ public:
     HFDatasetParser(const char* yaml_filename) :
           config_yaml(YAML::LoadFile(yaml_filename)) {
         initialize_config();
-        download();
     }
 
 

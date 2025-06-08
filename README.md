@@ -33,6 +33,7 @@ Options:
   --base-url <url>     Base URL to fetch from (e.g. https://api.openai.com/v1/completions)
   --outfile <path>     Output jsonl file path (e.g. output.jsonl)
   --req-rate <int>     Time between requests to server in ms (default 1000)
+  --n-samples <int>    Maximum number of samples (default 10000)
   --timeout <int>      Maximum seconds to wait before retrying a request (default no timeout)
   --help               Show this help message
 ```
