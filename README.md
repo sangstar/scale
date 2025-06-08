@@ -28,19 +28,40 @@ The arguments to pass to `scale` are:
 Usage: scale [OPTIONS]
 
 Options:
+  <path-to-yaml>       Path to a .yaml file containing the dataset config (see benchmarks folder)
+
   --base-url <url>     Base URL to fetch from (e.g. https://api.openai.com/v1/completions)
-  --id <id>            HuggingFace Dataset identifier (e.g. nyu-mll/glue)
-  --config <config>    Config name (e.g. cola)
-  --split <split>      Dataset split (e.g. train, test)
   --outfile <path>     Output jsonl file path (e.g. output.jsonl)
   --req-rate <int>     Time between requests to server in ms (default 1000)
-  -h, --help           Show this help message
+  --timeout <int>      Maximum seconds to wait before retrying a request (default no timeout)
+  --help               Show this help message
+```
+
+All configuration is defined in a YAML file, like those in the `benchmarks` directory, like this one, which is for 
+fetching and running a benchmakr on the MRPC subset of the GLUE dataset on HuggingFace:
+
+```yaml
+dataset:
+  tag: nyu-mll/glue
+  subset: mrpc
+  split: train
+pre_formatted_prompt: "Is the following sentence pair semantically equivalent?\n{}"
+sentence_tags:
+  - sentence1
+  - sentence2
+class_label:
+  tag: label
+  values:
+    - response: "yes"
+      id: 1
+    - response: "no"
+      id: 0
 ```
 
 And with an example run:
 
 ```shell
-./scale --base-url https://api.openai.com/v1/completions --id nyu-mll/glue --config cola --split train --outfile results.jsonl
+./scale ../benchmarks/cola.yaml --base-url https://api.openai.com/v1/completions --outfile results.jsonl
 INFO: Fetching data..
 INFO: Got 1000 rows.
 INFO: Beginning benchmark..
