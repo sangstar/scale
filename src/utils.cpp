@@ -104,7 +104,25 @@ FinalMetrics get_results(Metrics& metrics) {
     return fm;
 }
 
-std::vector<logprob_entry> get_label_logprobs(const Dataset& data, bool correct, const RequestResult& res) {
+// Only take the highest logprob for each match of the possible response labels
+std::vector<logprob_entry> filter_label_logprobs(const std::vector<logprob_entry>& logprob_entries, Config& cfg) {
+    std::vector<logprob_entry> filtered_entries;
+    for (const auto& value : cfg.label.values) {
+        float highest_logprob_for_value = -500;
+        size_t idx_with_highest_logprob_for_value = 0;
+        for (size_t i = 0; i < logprob_entries.size(); ++i) {
+            const logprob_entry& entry = logprob_entries[i];
+            if (entry.text == value.response && entry.logprob > highest_logprob_for_value) {
+                idx_with_highest_logprob_for_value = i;
+                highest_logprob_for_value = entry.logprob.value();
+            }
+        }
+        filtered_entries.emplace_back(logprob_entries[idx_with_highest_logprob_for_value]);
+    }
+    return std::move(filtered_entries);
+}
+
+std::vector<logprob_entry> get_label_logprobs(const Dataset& dataset, bool correct, const RequestResult& res) {
     std::vector<logprob_entry> label_logprobs;
     auto logprobs = res.completion_results[0].choices[0].logprobs;
     if (correct) {
@@ -115,22 +133,23 @@ std::vector<logprob_entry> get_label_logprobs(const Dataset& data, bool correct,
     // TODO: Need to order the TopLogprobs in descending order, otherwise I risk saying the logprob for
     //       "No" is based off a TopLogprob " NO" with logprob -15.242 when there was a "no" logprob with -2,
     //       which would deflate the performance eval here.
-    auto& cfg = data->get_config();
+    auto& cfg = dataset->get_config();
     for (auto& top_logprob: logprobs.top_logprobs) {
         for (auto& [k,v]: top_logprob) {
             std::string key = k;
             for (auto& response_label : cfg.label.values) {
                 auto maybe_got_logprob = get_logprob(key, v, response_label.response);
                 if (maybe_got_logprob.has_value()) {
-                    label_logprobs.emplace_back(logprob_entry{k, maybe_got_logprob.value()});
+                    label_logprobs.emplace_back(logprob_entry{response_label.response, maybe_got_logprob.value()});
                 }
             }
         }
     }
-    return label_logprobs;
+
+    return filter_label_logprobs(label_logprobs, cfg);
 }
 
-std::vector<json> get_output_json(const RequestResult& res, const Dataset& dataset) {
+std::vector<json> get_output_json(RequestResult& res, const Dataset& dataset) {
     std::vector<json> json_vec;
     auto logprobs_for_labels = get_label_logprobs(dataset, res.guessed_correctly, res);
     for (const auto& compl_result: res.completion_results) {

@@ -36,6 +36,7 @@ add_library(scale_core
         src/result_types.cpp
         src/utils.cpp
         src/streaming_response.cpp
+        src/completion_types.cpp
 )
 
 
