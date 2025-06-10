@@ -111,7 +111,10 @@ bool HFDatasetParser::add_rows(Data& data, std::string& uri) {
 
 void HFDatasetParser::parse_rows(Data& data, json& rows) {
     if (!rows.is_array()) {
-        Logger.error(std::format("Expected 'rows' to be an array, got: {}", rows.dump(2)));
+        throw std::runtime_error(std::format("Expected 'rows' to be an array, got: {}", rows.dump(2)));
+    }
+    if (rows.empty()) {
+        throw std::runtime_error(std::format("Rows is empty: {}", rows.dump(2)));
     }
     data.rows.insert(data.rows.end(), rows.begin(), rows.end());
 }
@@ -159,7 +162,7 @@ void fetch_response_and_add_to_results_buffer(
 ) {
     std::mutex compl_buffer_mutex;
     int retries = 0;
-    std::string* json_str;
+    std::string json_str;
     while (true) {
         {
             std::unique_lock<std::mutex> lock(params.resp->mu);
@@ -167,11 +170,14 @@ void fetch_response_and_add_to_results_buffer(
                 return params.resp->ready_to_fetch();
             });
         }
-        bool producer_finished = shared_client->write_to_buffer_finished(params.resp);
-        auto state = shared_client->fetch(params.resp, json_str);
-        if (state == SUCCESS) {
+        auto fetched_result = shared_client->fetch(params.resp);
+        if (fetched_result.state == RingState::SUCCESS) {
             bool fine_to_add = true;
-            CompletionResults results(*json_str);
+            json_str = fetched_result.content.value();
+            if (json_str.empty()) {
+                throw std::runtime_error("Fetched json string is empty");
+            }
+            CompletionResults results(std::move(json_str));
 
             // For finish_reason = length, an empty response
             // is thrown back at the end indicating it reached
@@ -190,9 +196,12 @@ void fetch_response_and_add_to_results_buffer(
             // TODO: Make this atomic
             if (fine_to_add) {
                 std::lock_guard<std::mutex> lock(compl_buffer_mutex);
+                if (results.to_string().empty()) {
+                    throw std::runtime_error("Result data was invalidated.");
+                }
                 params.compl_result_buffer->emplace_back(std::move(results));
             }
-        } else if (state == EMPTY && producer_finished) {
+        } else if (fetched_result.state == RingState::EMPTY && shared_client->write_to_buffer_finished(params.resp)) {
             if (params.max_retries == retries) {
                 break;
             }
@@ -244,7 +253,7 @@ void RequestTransportStrategy::send_and_add_to_buffer(
         result.latencies = latencies;
         result.params = req;
         result.guessed_correctly = guessed_correctly(dataset, result);
-        request_results_buffer->push(std::move(result));
+        request_results_buffer->push(result);
     } else {
         // If the worker found no work to be processed from the stream buffer, just make a note of
         // that and finish.
@@ -267,21 +276,24 @@ void FileWritingStrategy::write_to_jsonl_from_results_buffer(
     // With many producers, it's unlikely for this thread to be so quick
     // that it finishes early due to an empty buffer before all producers
     // are finished, so we can probably get away with not signaling done
-    RequestResult* result;
+    RequestResult result;
     while (true) {
-        auto state = buf->fetch(result);
-        if (state == SUCCESS) {
-            metrics.req_results.emplace_back(*result);
+        auto fetch_attempt = buf->fetch();
+        if (fetch_attempt.state == RingState::SUCCESS) {
+            result = fetch_attempt.content.value();
+            metrics.req_results.emplace_back(result);
             metrics.requests_processed++;
-            auto jsons = get_output_json(*result, dataset);
+            auto jsons = get_output_json(result, dataset);
             for (auto& jsonl: jsons) {
                 auto jsonl_str = jsonl.dump();
                 Logger.info(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()));
                 outfile << jsonl_str << '\n';
             }
-        }
-        if (state == EMPTY && this->can_finish) {
-            break;
+        } else {
+            if (fetch_attempt.state == RingState::EMPTY && this->can_finish) {
+                break;
+            }
+            std::this_thread::yield();
         }
     }
     metrics.benchmark_end = std::chrono::high_resolution_clock::now();

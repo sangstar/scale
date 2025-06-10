@@ -14,6 +14,10 @@ struct RequestResult {
     bool guessed_correctly;
     LatencyMetrics latencies;
     std::vector<json> to_json();
+
+    friend std::ostream& operator<<(std::ostream& os, RequestResult& r) {
+        return os << r.to_json();
+    }
 };
 
 

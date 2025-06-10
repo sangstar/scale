@@ -6,6 +6,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <fcntl.h>
+#include <execinfo.h>
 
 thread_local std::vector<time_point> AsyncLogger::time_starts;
 
@@ -90,8 +91,7 @@ void LoggingContext::info(std::string message) {
 
 void LoggingContext::error(std::string message) const {
     if (level >= ERROR) {
-        std::cerr << std::format("ERROR: {}", std::move(message));
-        exit(1);
+        throw std::runtime_error(std::format("ERROR: {}", std::move(message)));
     }
 };
 
@@ -101,9 +101,10 @@ void AsyncLogger::display_loop() {
             std::unique_lock<std::mutex> wait_response_lock(mu);
             cv.wait(wait_response_lock, [this] { return ready_to_read.load(std::memory_order_acquire) || done; });
         }
+        std::string msg;
         auto to_display = messages.fetch();
-        if (to_display.state == SUCCESS) {
-            auto msg = to_display.content.value();
+        if (to_display.state == RingState::SUCCESS) {
+            msg = to_display.content.value();
             auto to_write = std::format("{}\n", msg);
             ::write(fd, to_write.c_str(), to_write.size());
         }

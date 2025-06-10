@@ -122,7 +122,7 @@ std::vector<logprob_entry> filter_label_logprobs(const std::vector<logprob_entry
     return std::move(filtered_entries);
 }
 
-std::vector<logprob_entry> get_label_logprobs(const Dataset& dataset, bool correct, const RequestResult& res) {
+std::optional<std::vector<logprob_entry>> get_label_logprobs(const Dataset& dataset, bool correct, const RequestResult& res) {
     std::vector<logprob_entry> label_logprobs;
     auto logprobs = res.completion_results[0].choices[0].logprobs;
     if (correct) {
@@ -145,8 +145,10 @@ std::vector<logprob_entry> get_label_logprobs(const Dataset& dataset, bool corre
             }
         }
     }
-
-    return filter_label_logprobs(label_logprobs, cfg);
+    if (!label_logprobs.empty()) {
+        return filter_label_logprobs(label_logprobs, cfg);
+    }
+    return std::nullopt;
 }
 
 std::vector<json> get_output_json(RequestResult& res, const Dataset& dataset) {
@@ -161,9 +163,13 @@ std::vector<json> get_output_json(RequestResult& res, const Dataset& dataset) {
         j["object"] = compl_result.object;
         j["prompt"] = res.params.prompt;
         j["guessed_correctly"] = res.guessed_correctly;
-        for (const auto& label_logprobs : logprobs_for_labels) {
-            j[label_logprobs.text + "_logprob"] = label_logprobs.logprob;
+        if (logprobs_for_labels.has_value()) {
+            auto logprob_labels = logprobs_for_labels.value();
+            for (const auto& label_logprobs : logprob_labels) {
+                j[label_logprobs.text + "_logprob"] = label_logprobs.logprob;
+            }
         }
+
         auto choice = compl_result.choices[0];
         j["finish_reason"] = choice.finish_reason;
         j["text"] = choice.text;
@@ -177,7 +183,7 @@ std::string join(std::vector<const std::string>& strings, const std::string& sep
     size_t num_strings = strings.size();
     for (size_t i = 0; i < num_strings; ++i) {
         output += strings[i];
-        if (!i == num_strings - 1) {
+        if (i != num_strings - 1) {
             output += sep;
         }
     }

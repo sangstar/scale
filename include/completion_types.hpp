@@ -50,4 +50,14 @@ struct CompletionResults {
     int created;
     std::vector<Choice> choices;
     std::string model;
+
+    std::string to_string() {
+        std::string str;
+        str += id + ", ";
+        for (auto& choice: choices) {
+            str += choice.index + ", ";
+            str += choice.text + ", ";
+        }
+        return std::move(str);
+    }
 };

@@ -138,9 +138,9 @@ LatencyMetrics CURLHandler::await(std::shared_ptr<StreamingResponse> resp) {
     return resp->latencies;
 }
 
-RingState CURLHandler::fetch(const std::shared_ptr<StreamingResponse>& resp, std::string*& to_write_to) {
+RingResult<std::string> CURLHandler::fetch(const std::shared_ptr<StreamingResponse>& resp) {
     if (resp) {
-        return resp->fetch(to_write_to);
+        return resp->fetch();
     }
     throw std::runtime_error("Invalid buffer.");
 }

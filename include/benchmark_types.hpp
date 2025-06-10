@@ -13,6 +13,7 @@
 #include "curl.hpp"
 #include "result_types.hpp"
 #include "yaml-cpp/yaml.h"
+#include "logger.hpp"
 
 using RequestResultBuffer = std::shared_ptr<MPSCRingBuffer<RequestResult>>;
 using CompletionResultsBuffer = std::shared_ptr<std::vector<CompletionResults>>;
@@ -87,13 +88,13 @@ public:
 
     std::string get_url() override;
 
-    void download();
+    void download() override;
 
     bool add_rows(Data& data, std::string& uri) override;
 
     void parse_rows(Data& data, json& rows);
 
-    json& get_row(int row_idx);
+    json& get_row(int row_idx) override;
 
 
 

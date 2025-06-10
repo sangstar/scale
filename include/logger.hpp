@@ -6,9 +6,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
-#include <utility>
-#include "ring_buffers.hpp"
 #include "latency_metrics.hpp"
+#include "ring_buffers.hpp"
 
 enum LogLevel {
     NOTSET,

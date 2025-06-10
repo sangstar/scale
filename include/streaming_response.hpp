@@ -20,7 +20,7 @@ public:
     void finalize();
     std::mutex mu;
     void push(std::string str);
-    RingState fetch(std::string*& item);
+    RingResult<std::string> fetch();
 private:
     std::atomic<bool> fetchable;
     SPMCRingBuffer<std::string> ring;
