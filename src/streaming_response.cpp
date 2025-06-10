@@ -23,13 +23,8 @@ void StreamingResponse::push(std::string str) {
     RingState state = ring.push(std::move(str));
     if (state == RingState::SUCCESS) {
         std::lock_guard<std::mutex> lock(mu);
-        auto expected = false;
-        fetchable.compare_exchange_strong(expected, true, std::memory_order_release);
         cv.notify_all();
-        return;
     }
-    auto expected = true;
-    fetchable.compare_exchange_strong(expected, false, std::memory_order_release);
 }
 
 RingResult<std::string> StreamingResponse::fetch() {

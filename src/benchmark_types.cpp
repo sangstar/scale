@@ -59,13 +59,22 @@ std::string HFDatasetParser::get_url() {
 }
 
 void HFDatasetParser::download() {
-    bool is_finished = false;
-    while (!is_finished) {
+    int failed_requests = 0;
+    int max_failed_requests = 10;
+
+    while (true) {
         auto url = get_url();
         offset += rows_per_query;
-        is_finished = add_rows(data, url);
+        if (!add_rows(data, url)) {
+            failed_requests++;
+            if (failed_requests >= max_failed_requests) {
+                throw std::runtime_error("Failed parsing dataset");
+            }
+            Logger.info("Got bad response when downloading dataset. Will try again in a few moments..");
+            std::this_thread::sleep_for(std::chrono::milliseconds(10'000));
+        };
         if (data.rows.size() >= max_rows) {
-            is_finished = true;
+            break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(ms_between_curl));
     }
@@ -96,17 +105,17 @@ bool HFDatasetParser::add_rows(Data& data, std::string& uri) {
     if (str_contains(resp, BenchmarkingConstants::rate_limit_text.data())) {
         Logger.info("Hit rate limit. Slowing down...");
         std::this_thread::sleep_for(std::chrono::milliseconds(30'000));
-        return false;
+        return true;
     }
     json as_json;
     try {
         as_json = parse_to_json(resp);
     } catch (const json::parse_error& e) {
         Logger.debug("Got parser error from resp: {}", resp);
-        return true;
+        return false;
     }
     parse_rows(data, as_json["rows"]);
-    return false;
+    return true;
 }
 
 void HFDatasetParser::parse_rows(Data& data, json& rows) {
@@ -172,7 +181,6 @@ void fetch_response_and_add_to_results_buffer(
         }
         auto fetched_result = shared_client->fetch(params.resp);
         if (fetched_result.state == RingState::SUCCESS) {
-            bool fine_to_add = true;
             json_str = fetched_result.content.value();
             if (json_str.empty()) {
                 throw std::runtime_error("Fetched json string is empty");
@@ -188,11 +196,13 @@ void fetch_response_and_add_to_results_buffer(
             //       multiple Choices and one has text = "" and one doesn't?
             //       this would disqualify all
 
+            bool fine_to_add = false;
             for (auto& choice: results.choices) {
-                if (choice.text == "") {
-                    fine_to_add = false;
+                if (choice.text != "") {
+                    fine_to_add = true;
                 }
             }
+
             // TODO: Make this atomic
             if (fine_to_add) {
                 std::lock_guard<std::mutex> lock(compl_buffer_mutex);
@@ -249,11 +259,12 @@ void RequestTransportStrategy::send_and_add_to_buffer(
         // or writing to it (no more surprises), so dereference off
         // the shared_ptr safeguard and move the result for the caller
         // to own it.
+        assert(params.compl_result_buffer.use_count() <= 1);
         result.completion_results = std::move(*params.compl_result_buffer);
         result.latencies = latencies;
         result.params = req;
         result.guessed_correctly = guessed_correctly(dataset, result);
-        request_results_buffer->push(result);
+        request_results_buffer->push(std::move(result));
     } else {
         // If the worker found no work to be processed from the stream buffer, just make a note of
         // that and finish.
@@ -272,26 +283,33 @@ void FileWritingStrategy::write_to_jsonl_from_results_buffer(
         throw std::runtime_error("failed to open output file");
     }
 
+    int max_consecutive_retries = 100;
+    int consecutive_retries = 0;
 
-    // With many producers, it's unlikely for this thread to be so quick
-    // that it finishes early due to an empty buffer before all producers
-    // are finished, so we can probably get away with not signaling done
     RequestResult result;
     while (true) {
         auto fetch_attempt = buf->fetch();
         if (fetch_attempt.state == RingState::SUCCESS) {
+            consecutive_retries = 0;
+
             result = fetch_attempt.content.value();
             metrics.req_results.emplace_back(result);
             metrics.requests_processed++;
             auto jsons = get_output_json(result, dataset);
+
             for (auto& jsonl: jsons) {
                 auto jsonl_str = jsonl.dump();
                 Logger.info(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()));
                 outfile << jsonl_str << '\n';
             }
+
         } else {
             if (fetch_attempt.state == RingState::EMPTY && this->can_finish) {
-                break;
+                if (consecutive_retries >= max_consecutive_retries) {
+                    break;
+                }
+                Logger.debug("Writer retrying read. Consecutive retries: {}\n", std::to_string(consecutive_retries));
+                consecutive_retries++;
             }
             std::this_thread::yield();
         }
@@ -330,6 +348,7 @@ FinalMetrics ProcessingStrategy::process_benchmark(const char* filename_jsonl) {
 
     this->writer.finalize();
     writer_thread.join();
+
     auto final_metrics = get_results(metrics);
     return final_metrics;
 }

@@ -146,11 +146,11 @@ public:
     }
 
     void error(const std::string& msg) {
-        debug([&] {
-            std::cout << "ERROR ENCOUNTERED!" << std::endl;
-            dump_state();
-            throw std::runtime_error(msg);
-        });
+        // This isn't debug
+        std::lock_guard<std::mutex> lock(debugger_mutex);
+        std::cout << "ERROR ENCOUNTERED!" << std::endl;
+        dump_state();
+        throw std::runtime_error(msg);
     }
 
     void clear_change_reason_history() {
@@ -230,6 +230,8 @@ private:
 template <typename T, std::size_t N>
 struct RingBuffer {
     virtual ~RingBuffer() = default;
+
+    std::atomic<int> slots_written;
 
     std::atomic<size_t> head;
     std::atomic<size_t> tail;
@@ -339,7 +341,7 @@ struct MPSCRingBuffer : RingBuffer<T, ResultsRingBufferMaxSize> {
     RingResult<T> fetch();
 };
 
-
+// Are these even different from the SPMC buffer methods?
 template<typename T>
 RingState MPSCRingBuffer<T>::push(T content) {
     auto maybe_head = this->try_claim_head();
@@ -348,6 +350,7 @@ RingState MPSCRingBuffer<T>::push(T content) {
     }
     auto claimed_head = std::move(maybe_head.value());
     this->send_to_slot(claimed_head, std::move(content));
+    this->slots_written.store(this->slots_written + 1, std::memory_order_release);
     return RingState::SUCCESS;
 }
 
