@@ -25,8 +25,7 @@ size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp)
     return size * nmemb;
 }
 
-CURLHandler::CURLHandler(const char* uri, const char* api_key, std::optional<long> timeout)  :
-    timeout(timeout) {
+CURLHandler::CURLHandler(const char* uri, const char* api_key, std::optional<long> timeout) : timeout(timeout) {
     this->uri = std::string(uri);
     if (!api_key) {
         throw std::runtime_error("No api key provided.");

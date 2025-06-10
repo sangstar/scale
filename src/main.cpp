@@ -92,8 +92,6 @@ int main(int argc, char* argv[]) {
     params->download();
 
 
-
-
     auto shared_client = std::make_shared<CURLHandler>("https://api.openai.com/v1/completions",
                                                        std::getenv("OPENAI_API_KEY"),
                                                        timeout_long);

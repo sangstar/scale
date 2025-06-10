@@ -38,7 +38,7 @@ Options:
   --help               Show this help message
 ```
 
-All configuration is defined in a YAML file, like those in the `benchmarks` directory, like this one, which is for 
+All configuration is defined in a YAML file, like those in the `benchmarks` directory, like this one, which is for
 fetching and running a benchmakr on the MRPC subset of the GLUE dataset on HuggingFace:
 
 ```yaml

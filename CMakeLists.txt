@@ -3,10 +3,10 @@ project(scale)
 
 set(CMAKE_CXX_STANDARD 20)
 
-if(APPLE)
+if (APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++")
-endif()
+endif ()
 
 
 Include(FetchContent)

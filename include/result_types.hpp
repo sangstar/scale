@@ -13,6 +13,7 @@ struct RequestResult {
     std::vector<CompletionResults> completion_results;
     bool guessed_correctly;
     LatencyMetrics latencies;
+
     std::vector<json> to_json();
 
     friend std::ostream& operator<<(std::ostream& os, RequestResult& r) {
@@ -54,7 +55,9 @@ struct ParsedRequestResult {
 
 struct Metrics {
     const char* output_jsonl;
-    explicit Metrics(const char* jsonl) : output_jsonl(jsonl) {};
+
+    explicit Metrics(const char* jsonl) : output_jsonl(jsonl) {
+    };
     time_point benchmark_start = std::chrono::high_resolution_clock::now();
     time_point benchmark_end;
     double requests_processed = 0;
@@ -68,5 +71,6 @@ struct FinalMetrics {
     double duration;
     double req_rate;
     double accuracy;
+
     std::string display();
 };

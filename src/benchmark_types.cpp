@@ -140,16 +140,16 @@ std::string DatasetToRequestStrategy::get_prompt_from_row(json& row) {
     const auto& cfg = dataset->get_config();
     std::vector<const std::string> sentences;
     std::vector<const std::string> possible_answers;
-    for (const auto& sentence_tag : cfg.sentence_tags) {
+    for (const auto& sentence_tag: cfg.sentence_tags) {
         sentences.emplace_back(row[sentence_tag]);
     }
-    for (const auto& value : cfg.label.values) {
+    for (const auto& value: cfg.label.values) {
         possible_answers.emplace_back(value.response);
     }
     auto pre_formatted_task = std::vformat(cfg.pre_formatted_prompt, std::make_format_args(join(sentences, " | ")));
 
     auto prompt = std::vformat("{}\nPlease choose from the following choices: {}\n Answer: ",
-        std::make_format_args(pre_formatted_task, join(possible_answers)));
+                               std::make_format_args(pre_formatted_task, join(possible_answers)));
     return std::move(prompt);
 }
 
@@ -272,6 +272,9 @@ void RequestTransportStrategy::send_and_add_to_buffer(
     }
 }
 
+// TODO: Processing less requests than asked for.
+//       Have some lifecycle tracking for each request to
+//       see if any slipped through the cracks
 void FileWritingStrategy::write_to_jsonl_from_results_buffer(
     Metrics& metrics,
     RequestResultBuffer& buf,
@@ -302,7 +305,6 @@ void FileWritingStrategy::write_to_jsonl_from_results_buffer(
                 Logger.info(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()));
                 outfile << jsonl_str << '\n';
             }
-
         } else {
             if (fetch_attempt.state == RingState::EMPTY && this->can_finish) {
                 if (consecutive_retries >= max_consecutive_retries) {

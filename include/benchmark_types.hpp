@@ -31,24 +31,27 @@ struct Config {
         std::string response;
         int id;
     };
+
     struct Dataset {
         std::string tag;
         std::string subset;
         std::string split;
     };
+
     std::string pre_formatted_prompt;
     std::vector<std::string> sentence_tags;
+
     struct ClassLabel {
         std::string tag;
         std::vector<Value> values;
     };
+
     Dataset dataset;
     ClassLabel label;
 };
 
 class DatasetParsingStrategy {
 public:
-
     virtual ~DatasetParsingStrategy() = default;
 
     virtual std::string get_url() = 0;
@@ -77,9 +80,7 @@ using Dataset = std::unique_ptr<DatasetParsingStrategy>;
 
 class HFDatasetParser final : public DatasetParsingStrategy {
 public:
-
-    HFDatasetParser(const char* yaml_filename) :
-          config_yaml(YAML::LoadFile(yaml_filename)) {
+    HFDatasetParser(const char* yaml_filename) : config_yaml(YAML::LoadFile(yaml_filename)) {
         initialize_config();
     }
 
@@ -95,8 +96,6 @@ public:
     void parse_rows(Data& data, json& rows);
 
     json& get_row(int row_idx) override;
-
-
 
 private:
     YAML::Node config_yaml;
