@@ -339,7 +339,6 @@ struct MPSCRingBuffer : RingBuffer<T, ResultsRingBufferMaxSize> {
 
     RingState push(T content);
 
-    // Returns a copy of the fetched value -- safer
     RingResult<T> fetch();
 };
 
