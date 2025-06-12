@@ -217,7 +217,7 @@ bool maybe_found_chunk_start(ChunkStates& state, const std::string& char_buffer)
 }
 
 bool maybe_found_end(ChunkStates& state, const std::string& content, int idx) {
-    if (idx + 1 == content.size()) {
+    if (idx >= content.size() - 2) {
         state = ChunkStates::END;
         return true;
     }
@@ -246,6 +246,7 @@ bool maybe_found_token_end(ChunkStates& state, const std::string& char_buffer) {
 
 void push_chunks(StreamingResponse* streamed, std::string content) {
     int pushes = 0;
+    int i = 0;
 
     std::string char_buffer;
     ChunkStates state = ChunkStates::START;
@@ -253,7 +254,7 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
     std::string data_chunk = "";
     char c;
 
-    for (int i = 0; i < content.size(); ++i) {
+    for (i = 0; i <= content.size(); ++i) {
         c = content[i];
         char_buffer += c;
         switch (state) {
@@ -268,7 +269,6 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
             case ChunkStates::FOUND_TOKEN_START:
                 if (maybe_found_token_end(state, char_buffer)) {
                     char_buffer.pop_back(); // remove the stray \n from end_token
-                    streamed->feedback.chunks_pushed.fetch_add(1, std::memory_order_acq_rel);
                     streamed->push(std::move(char_buffer));
                     pushes++;
                 }
@@ -279,13 +279,15 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
                 break;
             case ChunkStates::END:
                 if (pushes == 0) {
-                    streamed->feedback.failed_to_parse_strings.emplace_back(content);
+                    Logger.failed_to_parse_strings.emplace_back(content);
                 }
                 return;
             default: break;
         }
     }
-    streamed->feedback.failed_to_parse_strings.emplace_back(content);
+    if (state != ChunkStates::END) {
+        Logger.failed_to_parse_strings.emplace_back(content);
+    }
 }
 
 json parse_to_json(std::string json_str) {

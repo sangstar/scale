@@ -126,9 +126,9 @@ LoggingContext Logger(filename, DEBUG);
 //     ctx.perform_benchmark("output.jsonl");
 // }
 
-TEST_CASE( "Test load YAML" ) {
-    HFDatasetParser params("../../mrpc.yaml");
+TEST_CASE( "Test parse JSON" ) {
+    //std::string test_str = "data: {\"id":\"cmpl-BhTOHw4rgxTfgXoZn4NFNgyZGfUPr\",\"object\":\"text_completion\",\"created\":1749700781,"choices":[{\"text\":\"no\",\"index\":0,\"logprobs\":{\"tokens\":[\"no\"],\"token_logprobs\":[-0.67217714],\"top_logprobs\":[{\"no\":-0.67217714,\"No\":-1.3748653,"\n":-1.828057," no":-3.2456062," No":-3.6321113,"\n\n":-4.7127924," \n":-7.6328516,"Yes":-8.465514,"yes":-8.813094," \n\n":-9.108312,"NO":-9.468816," ":-9.611159,"<|endoftext|>":-10.157262,"\tno":-10.272944," yes":-10.533286," Yes":-10.560655,"N":-11.056375,"n":-11.181727,"\n \n":-11.410088,"Not":-11.467097}],"text_offset":[215]},"finish_reason":"length"}],"model":"gpt-3.5-turbo-instruct:20230824-v2"}
 
 
-    REQUIRE(1 == 1);
+
 }

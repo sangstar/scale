@@ -262,8 +262,6 @@ void RequestTransportStrategy::send_and_add_to_buffer(
         workers[i].join();
     }
 
-    params.resp->feedback.evaluate();
-
     // Process the buffer `res`
     if (!params.compl_result_buffer->empty()) {
         RequestResult result;
