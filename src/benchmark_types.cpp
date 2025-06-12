@@ -220,7 +220,6 @@ void fetch_response_and_add_to_results_buffer(
             } else {
                 Logger.disallowed_requests.fetch_add(1, std::memory_order_acq_rel);
             }
-
         } else if (fetched_result.state == RingState::EMPTY && params.finished) {
             if (consecutive_retries >= params.max_retries) {
                 break;
@@ -282,7 +281,6 @@ void RequestTransportStrategy::send_and_add_to_buffer(
         // that and finish.
         Logger.debug("Worker found no jobs from request buffer.");
         Logger.failed_send_and_add_to_buffer_calls.fetch_add(1, std::memory_order_acq_rel);
-
     }
 }
 

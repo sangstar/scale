@@ -259,7 +259,8 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
         char_buffer += c;
         switch (state) {
             case ChunkStates::START:
-                if (maybe_found_chunk_start(state, char_buffer)) { char_buffer.clear(); } break;
+                if (maybe_found_chunk_start(state, char_buffer)) { char_buffer.clear(); }
+                break;
             case ChunkStates::FOUND_CHUNK_START:
                 if (maybe_found_token_start(state, char_buffer)) { break; }
                 if (maybe_found_end(state, content, i)) {

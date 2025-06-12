@@ -15,12 +15,19 @@ public:
     std::thread t;
     std::condition_variable cv;
     bool done;
+
     bool check_producer_finished();
+
     bool ready_to_fetch() const;
+
     void finalize();
+
     std::mutex mu;
+
     void push(std::string str);
+
     RingResult<std::string> fetch();
+
 private:
     std::atomic<bool> fetchable;
     SPMCRingBuffer<std::string> ring;

@@ -31,7 +31,8 @@ public:
     explicit CURLHandler(
         const char* uri,
         const char* api_key = "",
-        std::optional<long> timeout = std::nullopt);
+        std::optional<long> timeout = std::nullopt
+    );
 
     std::optional<long> timeout;
 

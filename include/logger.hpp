@@ -80,7 +80,6 @@ struct LoggingContext {
     std::atomic<int> failed_send_and_add_to_buffer_calls = 0;
 
     std::atomic<int> send_add_to_buffer_calls = 0;
-
 };
 
 
