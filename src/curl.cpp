@@ -14,6 +14,16 @@ const std::string start_token = "{\"";
 const std::string end_token = "}\n";
 const std::string chunk_start_text = "data: ";
 
+
+enum class ChunkStates {
+    START,
+    FOUND_CHUNK_START,
+    FOUND_TOKEN_START,
+    FOUND_TOKEN_END,
+    FOUND_CHUNK_END,
+    END,
+};
+
 size_t write_cb_default(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string *) userp)->append((char *) contents, size * nmemb);
     return size * nmemb;
@@ -198,15 +208,6 @@ std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
     }
     return std::tuple<int, int>(start, end);
 }
-
-enum class ChunkStates {
-    START,
-    FOUND_CHUNK_START,
-    FOUND_TOKEN_START,
-    FOUND_TOKEN_END,
-    FOUND_CHUNK_END,
-    END,
-};
 
 bool maybe_found_chunk_start(ChunkStates& state, const std::string& char_buffer) {
     if (str_contains(char_buffer, chunk_start_text)) {
