@@ -9,7 +9,10 @@
 
 
 constexpr size_t data_token_len = std::string("data:").size();
-
+const std::string done_token = "[DONE]";
+const std::string start_token = "{\"";
+const std::string end_token = "}\n";
+const std::string chunk_start_text = "data: ";
 
 size_t write_cb_default(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string *) userp)->append((char *) contents, size * nmemb);
@@ -20,6 +23,7 @@ size_t write_cb_to_queue(void* contents, size_t size, size_t nmemb, void* userp)
     auto idx = Logger.set_start();
     auto as_streaming_resp = (StreamingResponse *) userp;
     auto content = std::string((char *) contents, size * nmemb);
+    Logger.send_chunks_calls.fetch_add(1, std::memory_order_acq_rel);
     push_chunks(as_streaming_resp, std::move(content));
     Logger.set_stop_and_display_time(idx, "write_cb_to_queue");
     return size * nmemb;
@@ -195,34 +199,93 @@ std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
     return std::tuple<int, int>(start, end);
 }
 
-void push_chunks(StreamingResponse* streamed, std::string content) {
-    bool done = false;
-    int offset = 0;
-    std::string done_token = "[DONE]";
-    while (!done) {
-        auto t = get_chunk_indices(offset, content);
-        auto start = std::get<0>(t);
-        offset = std::get<1>(t);
-        auto chunk = content.substr(start, offset - start);
+enum class ChunkStates {
+    START,
+    FOUND_CHUNK_START,
+    FOUND_TOKEN_START,
+    FOUND_TOKEN_END,
+    FOUND_CHUNK_END,
+    END,
+};
 
-        // TODO: This is brittle to some weird case where "[DONE]" is included in the response text
-        // The stopping condition here is when there's nothing left to read in to a chunk or there's a chunk with
-        // the [DONE] token
-        if (str_contains(chunk, done_token) || start == offset) {
-            // TODO: Need to seriously consider some timer abstraction to ensure
-            //       processing stuff isn't significantly inflating the actual latency.
-            //       At very least must heavily profile
-            done = true;
-            continue;
-        }
-        Logger.debug(std::format("Got chunk: {}", chunk));
-        // This is illegal if the above condition is false
-        if (chunk.back() != '}') {
-            throw std::runtime_error("chunking error");
-        }
-        streamed->push(std::move(chunk));
+bool maybe_found_chunk_start(ChunkStates& state, const std::string& char_buffer) {
+    if (str_contains(char_buffer, chunk_start_text)) {
+        state = ChunkStates::FOUND_CHUNK_START;
+        return true;
     }
-    return;
+    return false;
+}
+
+bool maybe_found_end(ChunkStates& state, const std::string& content, int idx) {
+    if (idx + 1 == content.size()) {
+        state = ChunkStates::END;
+        return true;
+    }
+    return false;
+}
+
+bool maybe_found_token_start(ChunkStates& state, const std::string& char_buffer) {
+    if (char_buffer == start_token) {
+        assert(state == ChunkStates::FOUND_CHUNK_START || state == ChunkStates::FOUND_TOKEN_END);
+        state = ChunkStates::FOUND_TOKEN_START;
+        return true;
+    }
+    return false;
+}
+
+bool maybe_found_token_end(ChunkStates& state, const std::string& char_buffer) {
+    if (char_buffer.size() > end_token.size()) {
+        std::string to_test = char_buffer.substr(char_buffer.size() - end_token.size());
+        if (to_test == end_token) {
+            state = ChunkStates::FOUND_CHUNK_END;
+            return true;
+        }
+    }
+    return false;
+}
+
+void push_chunks(StreamingResponse* streamed, std::string content) {
+    int pushes = 0;
+
+    std::string char_buffer;
+    ChunkStates state = ChunkStates::START;
+
+    std::string data_chunk = "";
+    char c;
+
+    for (int i = 0; i < content.size(); ++i) {
+        c = content[i];
+        char_buffer += c;
+        switch (state) {
+            case ChunkStates::START:
+                if (maybe_found_chunk_start(state, char_buffer)) { char_buffer.clear(); } break;
+            case ChunkStates::FOUND_CHUNK_START:
+                if (maybe_found_token_start(state, char_buffer)) { break; }
+                if (maybe_found_end(state, content, i)) {
+                    break;
+                }
+                break;
+            case ChunkStates::FOUND_TOKEN_START:
+                if (maybe_found_token_end(state, char_buffer)) {
+                    char_buffer.pop_back(); // remove the stray \n from end_token
+                    streamed->feedback.chunks_pushed.fetch_add(1, std::memory_order_acq_rel);
+                    streamed->push(std::move(char_buffer));
+                    pushes++;
+                }
+                break;
+            case ChunkStates::FOUND_CHUNK_END:
+                if (maybe_found_chunk_start(state, char_buffer)) { break; };
+                maybe_found_end(state, content, i);
+                break;
+            case ChunkStates::END:
+                if (pushes == 0) {
+                    streamed->feedback.failed_to_parse_strings.emplace_back(content);
+                }
+                return;
+            default: break;
+        }
+    }
+    streamed->feedback.failed_to_parse_strings.emplace_back(content);
 }
 
 json parse_to_json(std::string json_str) {

@@ -58,6 +58,27 @@ struct LoggingContext {
     size_t set_start();
 
     void set_stop_and_display_time(size_t id, const char* name);
+
+    std::atomic<int> pushed_chunks = 0;
+
+    std::atomic<int> num_requests_sent = 0;
+
+    std::atomic<int> num_processed = 0;
+
+    std::atomic<int> requests_sent_to_compl_buffer = 0;
+
+    std::atomic<int> disallowed_requests = 0;
+
+    std::atomic<int> fetched_requests = 0;
+
+    std::atomic<int> fetch_attempts = 0;
+
+    std::atomic<int> send_chunks_calls = 0;
+
+    std::atomic<int> failed_send_and_add_to_buffer_calls = 0;
+
+    std::atomic<int> send_add_to_buffer_calls = 0;
+
 };
 
 

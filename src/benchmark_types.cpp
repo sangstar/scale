@@ -97,6 +97,7 @@ void get_request_and_send_loop(
 
         data_processor.fill_req_from_row(dataset, idx, req);
         sender_and_parser.send_and_add_to_buffer(dataset, req, shared_client);
+        Logger.num_requests_sent.fetch_add(1, std::memory_order_acq_rel);
     }
 };
 
@@ -170,8 +171,9 @@ void fetch_response_and_add_to_results_buffer(
     const std::shared_ptr<CURLHandler>& shared_client
 ) {
     std::mutex compl_buffer_mutex;
-    int retries = 0;
+    int consecutive_retries = 0;
     std::string json_str;
+
     while (true) {
         {
             std::unique_lock<std::mutex> lock(params.resp->mu);
@@ -180,7 +182,11 @@ void fetch_response_and_add_to_results_buffer(
             });
         }
         auto fetched_result = shared_client->fetch(params.resp);
+        Logger.fetch_attempts.fetch_add(1, std::memory_order_acq_rel);
         if (fetched_result.state == RingState::SUCCESS) {
+            consecutive_retries = 0;
+            Logger.fetched_requests.fetch_add(1, std::memory_order_acq_rel);
+
             json_str = fetched_result.content.value();
             if (json_str.empty()) {
                 throw std::runtime_error("Fetched json string is empty");
@@ -209,13 +215,17 @@ void fetch_response_and_add_to_results_buffer(
                 if (results.to_string().empty()) {
                     throw std::runtime_error("Result data was invalidated.");
                 }
+                Logger.requests_sent_to_compl_buffer.fetch_add(1, std::memory_order_acq_rel);
                 params.compl_result_buffer->emplace_back(std::move(results));
+            } else {
+                Logger.disallowed_requests.fetch_add(1, std::memory_order_acq_rel);
             }
-        } else if (fetched_result.state == RingState::EMPTY && shared_client->write_to_buffer_finished(params.resp)) {
-            if (params.max_retries == retries) {
+
+        } else if (fetched_result.state == RingState::EMPTY && params.finished) {
+            if (consecutive_retries >= params.max_retries) {
                 break;
             }
-            retries++;
+            consecutive_retries++;
         }
     }
 }
@@ -228,11 +238,11 @@ void RequestTransportStrategy::send_and_add_to_buffer(
 ) {
     RequestProcessingParameters params{
         .resp = shared_client->post_stream(req),
-        .max_retries = 2,
+        .max_retries = 100,
         .compl_result_buffer = std::make_shared<std::vector<CompletionResults>>()
     };
 
-
+    Logger.send_add_to_buffer_calls.fetch_add(1, std::memory_order_acq_rel);
     // Deploy workers to grab responses from buffer, process them to CompletionResults types,
     // and add them to res.
     std::vector<std::thread> workers;
@@ -245,30 +255,36 @@ void RequestTransportStrategy::send_and_add_to_buffer(
 
     // Await the request's completion
     auto latencies = shared_client->await(params.resp);
+    params.finished.store(true, std::memory_order_release);
 
     // Wait for the workers deployed to finish
     for (int i = 0; i < WorkerConstants::NumWorkersPerRequest; ++i) {
         workers[i].join();
     }
 
+    params.resp->feedback.evaluate();
+
     // Process the buffer `res`
     if (!params.compl_result_buffer->empty()) {
         RequestResult result;
+
 
         // res doesn't need to be shared anymore since no one is reading
         // or writing to it (no more surprises), so dereference off
         // the shared_ptr safeguard and move the result for the caller
         // to own it.
-        assert(params.compl_result_buffer.use_count() <= 1);
         result.completion_results = std::move(*params.compl_result_buffer);
         result.latencies = latencies;
         result.params = req;
         result.guessed_correctly = guessed_correctly(dataset, result);
         request_results_buffer->push(std::move(result));
+        Logger.num_processed.fetch_add(1, std::memory_order_acq_rel);
     } else {
         // If the worker found no work to be processed from the stream buffer, just make a note of
         // that and finish.
         Logger.debug("Worker found no jobs from request buffer.");
+        Logger.failed_send_and_add_to_buffer_calls.fetch_add(1, std::memory_order_acq_rel);
+
     }
 }
 

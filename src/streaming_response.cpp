@@ -4,6 +4,8 @@
 
 #include "streaming_response.hpp"
 
+#include <logger.hpp>
+
 bool StreamingResponse::check_producer_finished() {
     return ring.producer_finished;
 }
@@ -22,6 +24,7 @@ void StreamingResponse::finalize() {
 void StreamingResponse::push(std::string str) {
     RingState state = ring.push(std::move(str));
     if (state == RingState::SUCCESS) {
+        Logger.pushed_chunks.fetch_add(1, std::memory_order_acq_rel);
         std::lock_guard<std::mutex> lock(mu);
         cv.notify_all();
     }

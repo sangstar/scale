@@ -127,6 +127,7 @@ struct RequestProcessingParameters {
     std::shared_ptr<StreamingResponse> resp;
     CompletionResultsBuffer compl_result_buffer;
     int max_retries;
+    std::atomic<bool> finished = false;
 };
 
 class RequestTransportStrategy {

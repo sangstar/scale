@@ -15,7 +15,7 @@
 
 static std::mutex debugger_mutex;
 
-constexpr int RequestRingBufferMaxSize = 10'000;
+constexpr int RequestRingBufferMaxSize = 50'000;
 constexpr int ResultsRingBufferMaxSize = 1'000'000;
 
 inline void print_stacktrace() {
