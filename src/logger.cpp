@@ -67,6 +67,16 @@ void LoggingContext::set_stop_and_display_time(size_t idx, const char* name) {
     }
 }
 
+
+void LoggingContext::dump_debugging_state() {
+    if (this->level == DEBUG) {
+        for (int i = 0; i < this->failed_to_parse_strings.size(); ++i) {
+            std::cout << "DEBUG: " << "Failed to parse string: " << this->failed_to_parse_strings[i];
+        }
+        std::cout << "DEBUG: Failed to parse " << this->failed_to_parse_strings.size() << " strings";
+    }
+}
+
 LoggingContext::LoggingContext(const std::string& filename, LogLevel level) : logger(filename), level(level) {
 }
 

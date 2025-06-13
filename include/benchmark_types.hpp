@@ -177,6 +177,8 @@ struct ProcessingStrategy {
     FinalMetrics process_benchmark(
         const char* filename_jsonl
     );
+
+    const int concurrent_requests = 100;
 };
 
 void get_request_and_send_loop(

@@ -13,7 +13,10 @@
 #include <unistd.h>
 #include <__format/format_functions.h>
 
-static std::mutex debugger_mutex;
+inline std::mutex& get_debugger_mutex() {
+    static std::mutex m;
+    return m;
+}
 
 constexpr int RequestRingBufferMaxSize = 50'000;
 constexpr int ResultsRingBufferMaxSize = 1'000'000;
@@ -109,7 +112,8 @@ class SlotDebugger {
 public:
     SlotDebugger() :
 #ifdef NDEBUG
-        enabled(false) {};
+        enabled(false) {
+    };
 #else
         enabled(true) {
     };
@@ -118,7 +122,7 @@ public:
 
     void debug(std::function<void()> fn) {
         if (enabled) {
-            std::lock_guard<std::mutex> lock(debugger_mutex);
+            std::lock_guard<std::mutex> lock(get_debugger_mutex());
             fn();
         }
     }
@@ -142,13 +146,15 @@ public:
     }
 
     void dump_state() {
-        std::cout << std::format("Slot state lifetime: {}", state_changes.to_str()) << std::endl;
-        print_stacktrace();
+        debug([&] {
+            std::cout << std::format("Slot state lifetime: {}", state_changes.to_str()) << std::endl;
+            print_stacktrace();
+        });
     }
 
     void error(const std::string& msg) {
         // This isn't debug
-        std::lock_guard<std::mutex> lock(debugger_mutex);
+        std::lock_guard<std::mutex> lock(get_debugger_mutex());
         std::cout << "ERROR ENCOUNTERED!" << std::endl;
         dump_state();
         throw std::runtime_error(msg);
@@ -171,7 +177,6 @@ public:
 
 private:
     std::atomic<int> slot_state_changes = 0;
-    std::mutex sentinel_mu;
     StateChangeRecords state_changes;
 };
 

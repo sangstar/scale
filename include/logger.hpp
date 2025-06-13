@@ -59,6 +59,8 @@ struct LoggingContext {
 
     void set_stop_and_display_time(size_t id, const char* name);
 
+    void dump_debugging_state();
+
     std::vector<std::string> failed_to_parse_strings;
 
     std::atomic<int> pushed_chunks = 0;

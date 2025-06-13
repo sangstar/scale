@@ -345,18 +345,24 @@ FinalMetrics ProcessingStrategy::process_benchmark(const char* filename_jsonl) {
     });
 
     std::vector<std::thread> workers;
-    for (int i = 0; i < WorkerConstants::NumConcurrentRequests; ++i) {
+    for (int i = 0; i < this->concurrent_requests; ++i) {
         std::thread t([this]() {
-            get_request_and_send_loop(
-                this->dataset_processor.get_dataset(),
-                this->sender_and_parser,
-                this->dataset_processor,
-                this->shared_client
-            );
+            try {
+                get_request_and_send_loop(
+                    this->dataset_processor.get_dataset(),
+                    this->sender_and_parser,
+                    this->dataset_processor,
+                    this->shared_client
+                );
+            } catch (const std::exception& e) {
+                std::cerr << "Worker thread crashed: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "Worker thread crashed with unknown exception" << std::endl;
+            }
         });
         workers.emplace_back(std::move(t));
     }
-    for (int i = 0; i < WorkerConstants::NumConcurrentRequests; ++i) {
+    for (int i = 0; i < this->concurrent_requests; ++i) {
         workers[i].join();
     }
 

@@ -7,19 +7,30 @@
 #include <random>
 #include "logger.hpp"
 
-
 constexpr size_t data_token_len = std::string("data:").size();
 const std::string done_token = "[DONE]";
 const std::string start_token = "{\"";
+
+// The end token here is not as fragile as it may look,
+// as this will not trigger on outputted model text that
+// happens to generate this character sequence. Only on
+// servers that append double newlines to their response payloads
 const std::string end_token = "}\n";
+
 const std::string chunk_start_text = "data: ";
+
+const std::string choices_start_text = "\"choices\":";
+// Having the sentinel tokens include quotes are a good idea
+// because the JSON payload will need to manually escape them, like \\".
+const std::string choices_block_end_token = "}],\"";
 
 
 enum class ChunkStates {
     START,
     FOUND_CHUNK_START,
-    FOUND_TOKEN_START,
-    FOUND_TOKEN_END,
+    PARSING_BEGINNING_PAYLOAD,
+    IN_CHOICES_BLOCK,
+    PARSING_END_PAYLOAD,
     FOUND_CHUNK_END,
     END,
 };
@@ -178,37 +189,6 @@ bool str_contains(const std::string& str, const std::string& to_test) {
     return false;
 }
 
-std::tuple<int, int> get_chunk_indices(int offset, const std::string& content) {
-    int start = 0;
-    int end = 0;
-    bool found_start_of_chunk = false;
-    std::string might_be_chunk;
-
-    for (size_t i = offset; i < content.size(); i++) {
-        if (end != 0) {
-            break;
-        }
-        if (!found_start_of_chunk && might_be_chunk == "data:") {
-            found_start_of_chunk = true;
-            start = i + data_token_len;
-        }
-        if (!found_start_of_chunk) {
-            // Look ahead 5 bytes to see if the collection matches "data:"
-            if (i + 5 <= content.size()) {
-                might_be_chunk = content.substr(i, 5);
-            }
-        }
-        if (found_start_of_chunk && content[i] == '}' && content[i + 1] == '\n') {
-            // Need to increment this by one to avoid an off-by-one with substringing
-            end = i + 1;
-        }
-    }
-    if (start != 0 && end != 0 && start == end) {
-        throw std::runtime_error("chunk failed to process");
-    }
-    return std::tuple<int, int>(start, end);
-}
-
 bool maybe_found_chunk_start(ChunkStates& state, const std::string& char_buffer) {
     if (str_contains(char_buffer, chunk_start_text)) {
         state = ChunkStates::FOUND_CHUNK_START;
@@ -227,9 +207,28 @@ bool maybe_found_end(ChunkStates& state, const std::string& content, int idx) {
 
 bool maybe_found_token_start(ChunkStates& state, const std::string& char_buffer) {
     if (char_buffer == start_token) {
-        assert(state == ChunkStates::FOUND_CHUNK_START || state == ChunkStates::FOUND_TOKEN_END);
-        state = ChunkStates::FOUND_TOKEN_START;
+        assert(state == ChunkStates::FOUND_CHUNK_START || state == ChunkStates::PARSING_END_PAYLOAD);
+        state = ChunkStates::PARSING_BEGINNING_PAYLOAD;
         return true;
+    }
+    return false;
+}
+
+bool maybe_found_choice_start(ChunkStates& state, const std::string& char_buffer) {
+    if (str_contains(char_buffer, choices_start_text)) {
+        state = ChunkStates::IN_CHOICES_BLOCK;
+        return true;
+    }
+    return false;
+}
+
+bool maybe_finished_with_choice_block(ChunkStates& state, const std::string& char_buffer) {
+    if (char_buffer.size() > choices_block_end_token.size()) {
+        auto to_test = char_buffer.substr(char_buffer.size() - choices_block_end_token.size());
+        if (to_test == choices_block_end_token) {
+            state = ChunkStates::PARSING_END_PAYLOAD;
+            return true;
+        }
     }
     return false;
 }
@@ -268,7 +267,12 @@ void push_chunks(StreamingResponse* streamed, std::string content) {
                     break;
                 }
                 break;
-            case ChunkStates::FOUND_TOKEN_START:
+            case ChunkStates::PARSING_BEGINNING_PAYLOAD:
+                if (maybe_found_choice_start(state, char_buffer)) { break; }
+            case ChunkStates::IN_CHOICES_BLOCK:
+                if (maybe_finished_with_choice_block(state, char_buffer)) { break; }
+                break;
+            case ChunkStates::PARSING_END_PAYLOAD:
                 if (maybe_found_token_end(state, char_buffer)) {
                     char_buffer.pop_back(); // remove the stray \n from end_token
                     streamed->push(std::move(char_buffer));

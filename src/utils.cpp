@@ -67,7 +67,7 @@ bool guessed_correctly(const Dataset& dataset, const RequestResult& res) {
 
     std::optional<int> guessed_label = std::nullopt;
     auto& cfg = dataset->get_config();
-    for (const auto& value : cfg.label.values) {
+    for (const auto& value: cfg.label.values) {
         if (parsed == value.response) {
             guessed_label = value.id;
         }
@@ -81,7 +81,7 @@ FinalMetrics get_results(Metrics& metrics) {
     double ttft_sum = 0;
     double e2e_latency_sum = 0;
     double guessed_correct = 0;
-    for (const auto& result : metrics.req_results) {
+    for (const auto& result: metrics.req_results) {
         ttft_sum += result.latencies.ttft;
         e2e_latency_sum += result.latencies.end_to_end_latency;
         if (result.guessed_correctly == true) {
@@ -101,13 +101,14 @@ FinalMetrics get_results(Metrics& metrics) {
 
 
     Logger.info(fm.display());
+    Logger.dump_debugging_state();
     return fm;
 }
 
 // Only take the highest logprob for each match of the possible response labels
 std::vector<logprob_entry> filter_label_logprobs(const std::vector<logprob_entry>& logprob_entries, Config& cfg) {
     std::vector<logprob_entry> filtered_entries;
-    for (const auto& value : cfg.label.values) {
+    for (const auto& value: cfg.label.values) {
         float highest_logprob_for_value = -500;
         size_t idx_with_highest_logprob_for_value = 0;
         for (size_t i = 0; i < logprob_entries.size(); ++i) {
@@ -122,7 +123,9 @@ std::vector<logprob_entry> filter_label_logprobs(const std::vector<logprob_entry
     return std::move(filtered_entries);
 }
 
-std::optional<std::vector<logprob_entry>> get_label_logprobs(const Dataset& dataset, bool correct, const RequestResult& res) {
+std::optional<std::vector<logprob_entry>> get_label_logprobs(
+    const Dataset& dataset, bool correct, const RequestResult& res
+) {
     std::vector<logprob_entry> label_logprobs;
     auto logprobs = res.completion_results[0].choices[0].logprobs;
     if (correct) {
@@ -137,7 +140,7 @@ std::optional<std::vector<logprob_entry>> get_label_logprobs(const Dataset& data
     for (auto& top_logprob: logprobs.top_logprobs) {
         for (auto& [k,v]: top_logprob) {
             std::string key = k;
-            for (auto& response_label : cfg.label.values) {
+            for (auto& response_label: cfg.label.values) {
                 auto maybe_got_logprob = get_logprob(key, v, response_label.response);
                 if (maybe_got_logprob.has_value()) {
                     label_logprobs.emplace_back(logprob_entry{response_label.response, maybe_got_logprob.value()});
@@ -165,7 +168,7 @@ std::vector<json> get_output_json(RequestResult& res, const Dataset& dataset) {
         j["guessed_correctly"] = res.guessed_correctly;
         if (logprobs_for_labels.has_value()) {
             auto logprob_labels = logprobs_for_labels.value();
-            for (const auto& label_logprobs : logprob_labels) {
+            for (const auto& label_logprobs: logprob_labels) {
                 j[label_logprobs.text + "_logprob"] = label_logprobs.logprob;
             }
         }
