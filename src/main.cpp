@@ -23,7 +23,7 @@ Options:
 
   --base-url <url>       Base URL to fetch from (e.g. https://api.openai.com/v1/completions)
   --outfile <path>       Output jsonl file path (e.g. output.jsonl)
-  --concurrency <int>    Number of concurrent requests to the server (default 100)
+  --concurrency <int>    Number of concurrent requests to send to the server (default 100)
   --n-samples <int>      Maximum number of samples (default 10000)
   --timeout <int>        Maximum seconds to wait before retrying a request (default no timeout)
   --help                 Show this help message

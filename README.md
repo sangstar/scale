@@ -28,14 +28,14 @@ The arguments to pass to `scale` are:
 Usage: scale [OPTIONS]
 
 Options:
-  <path-to-yaml>       Path to a .yaml file containing the benchmark config
+  <path-to-yaml>         Path to a .yaml file containing the benchmark config
 
-  --base-url <url>     Base URL to fetch from (e.g. https://api.openai.com/v1/completions)
-  --outfile <path>     Output jsonl file path (e.g. output.jsonl)
-  --req-rate <int>     Time between requests to server in ms (default 1000)
-  --n-samples <int>    Maximum number of samples (default 10000)
-  --timeout <int>      Maximum seconds to wait before retrying a request (default no timeout)
-  --help               Show this help message
+  --base-url <url>       Base URL to fetch from (e.g. https://api.openai.com/v1/completions)
+  --outfile <path>       Output jsonl file path (e.g. output.jsonl)
+  --concurrency <int>    Number of concurrent requests to send to the server (default 100)
+  --n-samples <int>      Maximum number of samples (default 10000)
+  --timeout <int>        Maximum seconds to wait before retrying a request (default no timeout)
+  --help                 Show this help message
 ```
 
 All configuration is defined in a YAML file, like those in the `benchmarks` directory, like this one, which is for
