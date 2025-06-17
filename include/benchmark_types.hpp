@@ -3,11 +3,8 @@
 //
 
 #pragma once
+#include <fstream>
 #include <string>
-#include <optional>
-#include <iostream>
-
-#include "constants.hpp"
 #include "streaming_response.hpp"
 #include "completion_types.hpp"
 #include "curl.hpp"
@@ -80,7 +77,7 @@ using Dataset = std::unique_ptr<DatasetParsingStrategy>;
 
 class HFDatasetParser final : public DatasetParsingStrategy {
 public:
-    HFDatasetParser(const char* yaml_filename) : config_yaml(YAML::LoadFile(yaml_filename)) {
+    explicit HFDatasetParser(const char* yaml_filename) : config_yaml(YAML::LoadFile(yaml_filename)) {
         initialize_config();
     }
 
@@ -93,7 +90,7 @@ public:
 
     bool add_rows(Data& data, std::string& uri) override;
 
-    void parse_rows(Data& data, json& rows);
+    static void parse_rows(Data& data, json& rows);
 
     json& get_row(int row_idx) override;
 
@@ -126,7 +123,7 @@ private:
 struct RequestProcessingParameters {
     std::shared_ptr<StreamingResponse> resp;
     CompletionResultsBuffer compl_result_buffer;
-    int max_retries;
+    int max_retries = 0;
     std::atomic<bool> finished = false;
 };
 
@@ -150,6 +147,47 @@ private:
     std::atomic<int> job_id;
 };
 
+
+class ResponseFetcher {
+public:
+    ResponseFetcher(
+        const RequestProcessingParameters& params,
+        const std::shared_ptr<CURLHandler>& shared_client
+    ) : params(params), shared_client(shared_client) {
+    };
+
+    void run();
+
+private:
+    int consecutive_retries = 0;
+    std::mutex compl_buffer_mutex;
+    const RequestProcessingParameters& params;
+    const std::shared_ptr<CURLHandler>& shared_client;
+    std::string json_str;
+};
+
+class RequestExecutor {
+public:
+    RequestExecutor(
+        const Dataset& dataset,
+        RequestParameters& req,
+        std::shared_ptr<CURLHandler>& shared_client
+    ) : dataset(dataset), req(req), shared_client(shared_client) {
+        params.resp = shared_client->post_stream(req);
+        params.max_retries = 100;
+        params.compl_result_buffer = std::make_shared<std::vector<CompletionResults>>();
+    }
+
+    void send_request_and_collect_results(RequestResultBuffer& request_result_buffer);
+
+private:
+    const Dataset& dataset;
+    RequestParameters& req;
+    std::shared_ptr<CURLHandler>& shared_client;
+    RequestProcessingParameters params;
+};
+
+
 class FileWritingStrategy {
 public:
     virtual ~FileWritingStrategy() = default;
@@ -164,9 +202,38 @@ public:
         can_finish = true;
     }
 
+    [[nodiscard]] bool producers_finished() const {
+        return can_finish;
+    }
+
 private:
     bool can_finish = false;
 };
+
+
+class FileWritingExecutor {
+public:
+    FileWritingExecutor(
+        Metrics& metrics,
+        RequestResultBuffer& buf,
+        const Dataset& dataset, const char* filename
+    ) : metrics(metrics), buf(buf), dataset(dataset), stream(filename) {
+        if (!stream.is_open()) {
+            throw std::runtime_error("failed to open output file");
+        }
+    }
+
+    void start_writing_loop(const std::function<bool()>& finalizer_callable);
+
+private:
+    Metrics& metrics;
+    RequestResultBuffer& buf;
+    const Dataset& dataset;
+    std::ofstream stream;
+    const int max_consecutive_retries = 100;
+    int consecutive_retries = 0;
+};
+
 
 struct ProcessingStrategy {
     DatasetToRequestStrategy& dataset_processor;

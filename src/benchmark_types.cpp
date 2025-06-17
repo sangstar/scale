@@ -111,7 +111,7 @@ bool HFDatasetParser::add_rows(Data& data, std::string& uri) {
     json as_json;
     try {
         as_json = parse_to_json(resp);
-    } catch (const json::parse_error& e) {
+    } catch (const json::parse_error&) {
         Logger.debug("Got parser error from resp: {}", resp);
         return false;
     }
@@ -141,9 +141,11 @@ std::string DatasetToRequestStrategy::get_prompt_from_row(json& row) {
     const auto& cfg = dataset->get_config();
     std::vector<const std::string> sentences;
     std::vector<const std::string> possible_answers;
+    sentences.reserve(cfg.sentence_tags.size());
     for (const auto& sentence_tag: cfg.sentence_tags) {
         sentences.emplace_back(row[sentence_tag]);
     }
+    possible_answers.reserve(cfg.label.values.size());
     for (const auto& value: cfg.label.values) {
         possible_answers.emplace_back(value.response);
     }
@@ -151,7 +153,7 @@ std::string DatasetToRequestStrategy::get_prompt_from_row(json& row) {
 
     auto prompt = std::vformat("{}\nPlease choose from the following choices: {}\n Answer: ",
                                std::make_format_args(pre_formatted_task, join(possible_answers)));
-    return std::move(prompt);
+    return prompt;
 }
 
 void DatasetToRequestStrategy::fill_req_from_row(
@@ -166,60 +168,121 @@ void DatasetToRequestStrategy::fill_req_from_row(
     req.prompt = this->get_prompt_from_row(row);
 }
 
+CompletionResults get_completion_results_from_fetched_result(
+    std::string& json_str,
+    std::string& fetched_str
+) {
+    Logger.fetched_requests.fetch_add(1, std::memory_order_acq_rel);
+
+    json_str = fetched_str;
+    if (json_str.empty()) {
+        throw std::runtime_error("Fetched json string is empty");
+    }
+    CompletionResults results(std::move(json_str));
+    return results;
+}
+
+// Note: completion_results_buffer's pointee is mutated
+void maybe_add_results_to_compl_results_buffer(
+    CompletionResults& results,
+    const CompletionResultsBuffer& completion_results_buffer,
+    std::mutex& compl_buffer_mutex
+) {
+    // For finish_reason = length, an empty response
+    // is thrown back at the end indicating it reached
+    // the finish_reason. Don't include these results.
+    // TODO: The logic here is likely flimsy and it assumes
+    //       choices has only one element (which is all I'm
+    //       used to seeing and assuming). What if there are
+    //       multiple Choices and one has text = "" and one doesn't?
+    //       this would disqualify all
+
+    bool fine_to_add = false;
+    for (auto& choice: results.choices) {
+        if (!choice.text.empty()) {
+            fine_to_add = true;
+        }
+    }
+
+    // TODO: Make this atomic
+    if (fine_to_add) {
+        std::lock_guard<std::mutex> lock(compl_buffer_mutex);
+        if (results.to_string().empty()) {
+            throw std::runtime_error("Result data was invalidated.");
+        }
+        Logger.requests_sent_to_compl_buffer.fetch_add(1, std::memory_order_acq_rel);
+        completion_results_buffer->emplace_back(std::move(results));
+    } else {
+        Logger.disallowed_requests.fetch_add(1, std::memory_order_acq_rel);
+    }
+}
+
 void fetch_response_and_add_to_results_buffer(
     const RequestProcessingParameters& params,
     const std::shared_ptr<CURLHandler>& shared_client
 ) {
-    std::mutex compl_buffer_mutex;
-    int consecutive_retries = 0;
-    std::string json_str;
+    ResponseFetcher response_fetcher(params, shared_client);
+    response_fetcher.run();
+}
 
+// Note: request_result_buffer's pointee is mutated
+void maybe_push_completion_to_results_buffer(
+    const CompletionResultsBuffer& completion_results_buffer,
+    LatencyMetrics& latencies,
+    RequestParameters& req,
+    const Dataset& dataset,
+    const RequestResultBuffer& request_result_buffer
+) {
+    // Process the buffer `res`
+    if (!completion_results_buffer->empty()) {
+        RequestResult result;
+
+
+        // res doesn't need to be shared anymore since no one is reading
+        // or writing to it (no more surprises), so dereference off
+        // the shared_ptr safeguard and move the result for the caller
+        // to own it.
+        result.completion_results = std::move(*completion_results_buffer);
+        result.latencies = latencies;
+        result.params = req;
+        result.guessed_correctly = guessed_correctly(dataset, result);
+        request_result_buffer->push(std::move(result));
+        Logger.num_processed.fetch_add(1, std::memory_order_acq_rel);
+    } else {
+        // If the worker found no work to be processed from the stream buffer, just make a note of
+        // that and finish.
+        Logger.debug("Worker found no jobs from request buffer.");
+        Logger.failed_send_and_add_to_buffer_calls.fetch_add(1, std::memory_order_acq_rel);
+    }
+}
+
+void RequestTransportStrategy::send_and_add_to_buffer(
+    const Dataset& dataset,
+    RequestParameters& req,
+    std::shared_ptr<CURLHandler>& shared_client
+) {
+    RequestExecutor request_executor(dataset, req, shared_client);
+    request_executor.send_request_and_collect_results(request_results_buffer);
+}
+
+void ResponseFetcher::run() {
     while (true) {
         {
             std::unique_lock<std::mutex> lock(params.resp->mu);
-            params.resp->cv.wait(lock, [&params] {
-                return params.resp->ready_to_fetch();
+            params.resp->cv.wait(lock, [this] {
+                return this->params.resp->ready_to_fetch();
             });
         }
         auto fetched_result = shared_client->fetch(params.resp);
         Logger.fetch_attempts.fetch_add(1, std::memory_order_acq_rel);
         if (fetched_result.state == RingState::SUCCESS) {
             consecutive_retries = 0;
-            Logger.fetched_requests.fetch_add(1, std::memory_order_acq_rel);
+            CompletionResults results = get_completion_results_from_fetched_result(
+                json_str,
+                fetched_result.content.value()
+            );
 
-            json_str = fetched_result.content.value();
-            if (json_str.empty()) {
-                throw std::runtime_error("Fetched json string is empty");
-            }
-            CompletionResults results(std::move(json_str));
-
-            // For finish_reason = length, an empty response
-            // is thrown back at the end indicating it reached
-            // the finish_reason. Don't include these results.
-            // TODO: The logic here is likely flimsy and it assumes
-            //       choices has only one element (which is all I'm
-            //       used to seeing and assuming). What if there are
-            //       multiple Choices and one has text = "" and one doesn't?
-            //       this would disqualify all
-
-            bool fine_to_add = false;
-            for (auto& choice: results.choices) {
-                if (choice.text != "") {
-                    fine_to_add = true;
-                }
-            }
-
-            // TODO: Make this atomic
-            if (fine_to_add) {
-                std::lock_guard<std::mutex> lock(compl_buffer_mutex);
-                if (results.to_string().empty()) {
-                    throw std::runtime_error("Result data was invalidated.");
-                }
-                Logger.requests_sent_to_compl_buffer.fetch_add(1, std::memory_order_acq_rel);
-                params.compl_result_buffer->emplace_back(std::move(results));
-            } else {
-                Logger.disallowed_requests.fetch_add(1, std::memory_order_acq_rel);
-            }
+            maybe_add_results_to_compl_results_buffer(results, params.compl_result_buffer, compl_buffer_mutex);
         } else if (fetched_result.state == RingState::EMPTY && params.finished) {
             if (consecutive_retries >= params.max_retries) {
                 break;
@@ -229,24 +292,38 @@ void fetch_response_and_add_to_results_buffer(
     }
 }
 
-
-void RequestTransportStrategy::send_and_add_to_buffer(
-    const Dataset& dataset,
-    RequestParameters& req,
-    std::shared_ptr<CURLHandler>& shared_client
+void write_to_request_from_fetched_and_add_to_metrics(
+    RequestResult& result,
+    const RingResult<RequestResult>& fetched,
+    Metrics& metrics
 ) {
-    RequestProcessingParameters params{
-        .resp = shared_client->post_stream(req),
-        .max_retries = 100,
-        .compl_result_buffer = std::make_shared<std::vector<CompletionResults>>()
-    };
+    result = fetched.content.value();
+    metrics.req_results.emplace_back(result);
+    metrics.requests_processed++;
+}
 
+void write_jsonl_to_outfile_from_req_result(
+    RequestResult& result,
+    const Dataset& dataset,
+    Metrics& metrics,
+    std::ofstream& outfile
+) {
+    auto jsons = get_output_json(result, dataset);
+
+    for (auto& jsonl: jsons) {
+        auto jsonl_str = jsonl.dump();
+        Logger.info(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()));
+        outfile << jsonl_str << '\n';
+    }
+}
+
+void RequestExecutor::send_request_and_collect_results(RequestResultBuffer& request_result_buffer) {
     Logger.send_add_to_buffer_calls.fetch_add(1, std::memory_order_acq_rel);
     // Deploy workers to grab responses from buffer, process them to CompletionResults types,
     // and add them to res.
     std::vector<std::thread> workers;
     for (int i = 0; i < WorkerConstants::NumWorkersPerRequest; ++i) {
-        std::thread t([this, &params, shared_client]() {
+        std::thread t([this]() {
             fetch_response_and_add_to_results_buffer(params, shared_client);
         });
         workers.emplace_back(std::move(t));
@@ -261,64 +338,38 @@ void RequestTransportStrategy::send_and_add_to_buffer(
         workers[i].join();
     }
 
-    // Process the buffer `res`
-    if (!params.compl_result_buffer->empty()) {
-        RequestResult result;
-
-
-        // res doesn't need to be shared anymore since no one is reading
-        // or writing to it (no more surprises), so dereference off
-        // the shared_ptr safeguard and move the result for the caller
-        // to own it.
-        result.completion_results = std::move(*params.compl_result_buffer);
-        result.latencies = latencies;
-        result.params = req;
-        result.guessed_correctly = guessed_correctly(dataset, result);
-        request_results_buffer->push(std::move(result));
-        Logger.num_processed.fetch_add(1, std::memory_order_acq_rel);
-    } else {
-        // If the worker found no work to be processed from the stream buffer, just make a note of
-        // that and finish.
-        Logger.debug("Worker found no jobs from request buffer.");
-        Logger.failed_send_and_add_to_buffer_calls.fetch_add(1, std::memory_order_acq_rel);
-    }
+    maybe_push_completion_to_results_buffer(
+        params.compl_result_buffer,
+        latencies,
+        req,
+        dataset,
+        request_result_buffer
+    );
 }
 
-// TODO: Processing less requests than asked for.
-//       Have some lifecycle tracking for each request to
-//       see if any slipped through the cracks
 void FileWritingStrategy::write_to_jsonl_from_results_buffer(
     Metrics& metrics,
     RequestResultBuffer& buf,
     const Dataset& dataset
 ) {
-    std::ofstream outfile(metrics.output_jsonl);
+    FileWritingExecutor writing_executor(metrics, buf, dataset, metrics.output_jsonl);
+    writing_executor.start_writing_loop([this] {
+            return this->producers_finished();
+        }
+    );
+}
 
-    if (!outfile.is_open()) {
-        throw std::runtime_error("failed to open output file");
-    }
-
-    int max_consecutive_retries = 100;
-    int consecutive_retries = 0;
-
+void FileWritingExecutor::start_writing_loop(const std::function<bool()>& finalizer_callable) {
     RequestResult result;
     while (true) {
         auto fetch_attempt = buf->fetch();
         if (fetch_attempt.state == RingState::SUCCESS) {
             consecutive_retries = 0;
 
-            result = fetch_attempt.content.value();
-            metrics.req_results.emplace_back(result);
-            metrics.requests_processed++;
-            auto jsons = get_output_json(result, dataset);
-
-            for (auto& jsonl: jsons) {
-                auto jsonl_str = jsonl.dump();
-                Logger.info(std::format("Req {}: {}", metrics.requests_processed, jsonl.dump()));
-                outfile << jsonl_str << '\n';
-            }
+            write_to_request_from_fetched_and_add_to_metrics(result, fetch_attempt, metrics);
+            write_jsonl_to_outfile_from_req_result(result, dataset, metrics, stream);
         } else {
-            if (fetch_attempt.state == RingState::EMPTY && this->can_finish) {
+            if (fetch_attempt.state == RingState::EMPTY && finalizer_callable()) {
                 if (consecutive_retries >= max_consecutive_retries) {
                     break;
                 }
@@ -329,7 +380,7 @@ void FileWritingStrategy::write_to_jsonl_from_results_buffer(
         }
     }
     metrics.benchmark_end = std::chrono::high_resolution_clock::now();
-    outfile.close();
+    stream.close();
 }
 
 
