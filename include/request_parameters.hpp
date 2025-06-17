@@ -8,6 +8,8 @@
 
 using json = nlohmann::json;
 
+// TODO: Customizing this is not currently exposed
+//       these defaults won't do for non-QA tasks
 struct RequestParameters {
     std::string model = "gpt-3.5-turbo-instruct";
     bool echo = true;
