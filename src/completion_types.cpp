@@ -19,7 +19,11 @@ Logprobs::Logprobs(json logprobs_json) {
 }
 
 Choice::Choice(json choice_json) {
-    choice_json.at("finish_reason").get_to(finish_reason);
+    finish_reason =
+    choice_json.contains("finish_reason") && !choice_json["finish_reason"].is_null()
+        ? choice_json["finish_reason"].get<std::string>()
+        : "null";
+
     choice_json.at("text").get_to(text);
     choice_json.at("index").get_to(index);
     logprobs = Logprobs(choice_json.at("logprobs"));
