@@ -62,7 +62,6 @@ request_params:
   echo: false
   temperature: 1
   num_logprobs: 100
-  max_tokens: 1
   top_k: -1
   stream: true
 ```

@@ -54,7 +54,6 @@ void HFDatasetParser::initialize_config() {
     req.echo = config_yaml["request_params"]["echo"].as<bool>();
     req.temperature = config_yaml["request_params"]["temperature"].as<float>();
     req.num_logprobs = config_yaml["request_params"]["num_logprobs"].as<int>();
-    req.max_tokens = config_yaml["request_params"]["max_tokens"].as<int>();
     req.top_k = config_yaml["request_params"]["top_k"].as<int>();
     req.stream = config_yaml["request_params"]["stream"].as<bool>();
     Logger.debug(req.to_str());
