@@ -4,6 +4,7 @@
 
 #include "benchmark_types.hpp"
 
+#include <constants.hpp>
 #include <fstream>
 
 #include "utils.hpp"
@@ -48,6 +49,16 @@ void HFDatasetParser::initialize_config() {
         value_vec.emplace_back(std::move(val));
     }
     label.values = std::move(value_vec);
+    RequestParameters req;
+    req.model = config_yaml["request_params"]["model"].as<std::string>();
+    req.echo = config_yaml["request_params"]["echo"].as<bool>();
+    req.temperature = config_yaml["request_params"]["temperature"].as<float>();
+    req.num_logprobs = config_yaml["request_params"]["num_logprobs"].as<int>();
+    req.max_tokens = config_yaml["request_params"]["max_tokens"].as<int>();
+    req.top_k = config_yaml["request_params"]["top_k"].as<int>();
+    req.stream = config_yaml["request_params"]["stream"].as<bool>();
+    Logger.debug(req.to_str());
+    config.defaults = std::move(req);
 
     config.label = label;
     cfg = std::move(config);
@@ -87,7 +98,7 @@ void get_request_and_send_loop(
     DatasetToRequestStrategy& data_processor,
     std::shared_ptr<CURLHandler> shared_client
 ) {
-    RequestParameters req;
+    RequestParameters req = dataset->get_config().get_defaults();
     while (true) {
         auto idx = sender_and_parser.fetch_and_add_job_id();
 

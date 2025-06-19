@@ -57,6 +57,14 @@ class_label:
       id: 1
     - response: "no"
       id: 0
+request_params:
+  model: "gpt-3.5-turbo-instruct"
+  echo: false
+  temperature: 1
+  num_logprobs: 100
+  max_tokens: 1
+  top_k: -1
+  stream: true
 ```
 
 And with an example run:

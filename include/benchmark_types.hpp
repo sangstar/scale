@@ -43,6 +43,13 @@ struct Config {
         std::vector<Value> values;
     };
 
+    RequestParameters defaults;
+
+    // Purposefully passing by copy
+    RequestParameters get_defaults() {
+        return defaults;
+    }
+
     Dataset dataset;
     ClassLabel label;
 };
