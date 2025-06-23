@@ -15,8 +15,10 @@ like:
   latency and evaluation metrics and writes the results to a file
   or stdout
 
-Generally very fast, mostly bottlenecked by network-bound I/O, allowing for
-client overhead to not muddy benchmark results even at high request concurrency.
+Generally very fast, almost entirely bottlenecked by network-bound I/O, allowing for
+client overhead to not muddy benchmark results even at high request concurrency. 
+The concurrency model uses lock-free ring buffers and response parsing is optimized
+for the specific payload bodies from the OpenAI API.
 
 ## Usage example:
 
